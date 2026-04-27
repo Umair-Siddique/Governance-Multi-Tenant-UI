@@ -1,52 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import AdminChatLayout from './AdminChatLayout';
-import { streamRetrieverQuery } from '../../api/retriever';
 import { appendMessage, listMessages } from '../../api/chats';
-
-// Map backend stage keys → human label + icon character
-const STAGE_META = {
-  received:              { label: 'Received question',        icon: '📥' },
-  attachments:           { label: 'Processing attachments',   icon: '📎' },
-  analyzing_query:       { label: 'Analysing your question',  icon: '🔍' },
-  planning_retrieval:    { label: 'Planning retrieval',       icon: '🗺️' },
-  running_tools:         { label: 'Running retrieval tools',  icon: '⚙️' },
-  running_tools_complete:{ label: 'Tools finished',           icon: '✅' },
-  embedding:             { label: 'Embedding query',          icon: '🧮' },
-  searching_data_source: { label: 'Searching knowledge base', icon: '🗂️' },
-  pinecone_query:        { label: 'Querying vector index',    icon: '🧠' },
-  retrieved:             { label: 'Context retrieved',        icon: '✅' },
-  generating_response:   { label: 'Generating answer',        icon: '✍️' },
-  anthropic_uploads:     { label: 'Uploading PDFs to model',  icon: '⬆️' },
-  provider_stream_start: { label: 'Starting response stream', icon: '▶' },
-  complete:              { label: 'Done',                     icon: '✓' },
-};
-
-function StatusBar({ stage, message, isStreaming }) {
-  const meta = STAGE_META[stage] || null;
-  const icon = meta?.icon ?? '⏳';
-  const label = meta?.label ?? message ?? stage ?? '…';
-  const isDone = stage === 'complete';
-
-  return (
-    <div className="px-4 py-2 border-t border-border-default bg-background-subtle flex items-center gap-2 text-xs">
-      <span
-        className={`text-base leading-none ${isDone ? 'text-success-500' : isStreaming ? 'animate-pulse' : ''}`}
-        aria-hidden="true"
-      >
-        {icon}
-      </span>
-      <span className={`font-medium ${isDone ? 'text-success-600' : 'text-text-secondary'}`}>{label}</span>
-      {!isDone && isStreaming && (
-        <span className="ml-auto flex gap-0.5">
-          <span className="w-1 h-1 rounded-full bg-primary-400 animate-bounce [animation-delay:-0.3s]" />
-          <span className="w-1 h-1 rounded-full bg-primary-400 animate-bounce [animation-delay:-0.15s]" />
-          <span className="w-1 h-1 rounded-full bg-primary-400 animate-bounce" />
-        </span>
-      )}
-    </div>
-  );
-}
 
 const MAX_ATTACHMENTS = 12;
 
@@ -62,11 +19,7 @@ export default function AdminChatSession() {
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [question, setQuestion] = useState('');
   const [attachmentFiles, setAttachmentFiles] = useState([]);
-  const [retrieverStatus, setRetrieverStatus] = useState({ stage: '', message: '' });
-  const [planInfo, setPlanInfo] = useState(null);
-  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef(null);
-  const streamAbortRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const conversationId = useMemo(() => {
@@ -91,14 +44,10 @@ export default function AdminChatSession() {
 
   async function sendQuestion() {
     const text = question.trim();
-    if (!text || isStreaming || !conversationId) return;
+    if (!text || !conversationId) return;
 
     const filesToSend = [...attachmentFiles];
     setAttachmentFiles([]);
-
-    streamAbortRef.current?.abort();
-    streamAbortRef.current = new AbortController();
-    const { signal } = streamAbortRef.current;
 
     const attachmentNames = filesToSend.map((f) => f.name);
     const savedUser = await appendMessage(conversationId, {
@@ -122,87 +71,8 @@ export default function AdminChatSession() {
           attachmentNames,
         };
 
-    const assistantLocalId = `a-${Date.now()}`;
-    setMessages((prev) => [
-      ...prev,
-      userMessage,
-      { id: assistantLocalId, role: 'assistant', type: 'retriever', text: '' },
-    ]);
+    setMessages((prev) => [...prev, userMessage]);
     setQuestion('');
-    setIsStreaming(true);
-    setRetrieverStatus({ stage: '', message: '' });
-    setPlanInfo(null);
-
-    let assistantText = '';
-    try {
-      await streamRetrieverQuery(
-        { query: text, top_k: 8, signal, files: filesToSend.length ? filesToSend : undefined },
-        {
-          onStatus: (data) => {
-            setRetrieverStatus({ stage: data.stage || '', message: data.message || '' });
-          },
-          onPlan: (data) => setPlanInfo(data),
-          onToken: (t) => {
-            assistantText += t;
-            setMessages((prev) =>
-              prev.map((m) => (m.id === assistantLocalId ? { ...m, text: (m.text || '') + t } : m))
-            );
-          },
-          onError: (msg) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantLocalId
-                  ? {
-                      ...m,
-                      type: 'refusal',
-                      text: m.text?.trim() ? `${m.text}\n\n— ${msg}` : msg,
-                    }
-                  : m
-              )
-            );
-          },
-          onDone: () => {},
-        }
-      );
-
-      const finalText = (assistantText || '').trim();
-      if (finalText) {
-        const savedAssistant = await appendMessage(conversationId, {
-          role: 'assistant',
-          content: finalText,
-          metadata: {
-            provider: planInfo?.answer_provider || undefined,
-            search_query: planInfo?.search_query || undefined,
-          },
-        }).catch(() => null);
-
-        if (savedAssistant?.message?.id) {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === assistantLocalId ? { ...m, id: savedAssistant.message.id } : m))
-          );
-        }
-      }
-
-      // Avoid refreshing the conversation list on every streamed answer.
-      // Conversation ordering can be refreshed on explicit actions (new chat / rename / delete).
-    } catch (e) {
-      if (e?.name !== 'AbortError') {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantLocalId
-              ? {
-                  ...m,
-                  type: 'refusal',
-                  text: m.text?.trim() ? `${m.text}\n\n— ${e.message}` : e.message,
-                }
-              : m
-          )
-        );
-      }
-    } finally {
-      setIsStreaming(false);
-      setRetrieverStatus({ stage: '', message: '' });
-    }
   }
 
   useEffect(() => {
@@ -260,16 +130,11 @@ export default function AdminChatSession() {
   }
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    messagesEndRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'end',
+    });
   }, [messages]);
-
-  // If the user navigates away (e.g. clicks back), abort any in-flight stream
-  // so auth-refresh logic cannot misfire and redirect to "session expired".
-  useEffect(() => {
-    return () => {
-      streamAbortRef.current?.abort();
-    };
-  }, []);
 
   function bubbleClass(msg) {
     if (msg.role === 'user') return 'border border-border-default bg-background-subtle';
@@ -277,12 +142,60 @@ export default function AdminChatSession() {
     return 'bg-background-surface border border-border-default';
   }
 
+  function MessageBody({ msg }) {
+    if (msg.role !== 'assistant') {
+      return <p className="text-sm text-text-primary whitespace-pre-wrap">{msg.text}</p>;
+    }
+
+    return (
+      <div className="text-sm text-text-primary leading-relaxed">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ node, ...props }) => (
+              <a {...props} className="text-primary-600 hover:underline break-words" target="_blank" rel="noreferrer" />
+            ),
+            p: ({ node, ...props }) => <p {...props} className="whitespace-pre-wrap break-words" />,
+            ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2 space-y-1" />,
+            ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 my-2 space-y-1" />,
+            li: ({ node, ...props }) => <li {...props} className="whitespace-pre-wrap" />,
+            code: ({ node, inline, className, children, ...props }) => {
+              if (inline) {
+                return (
+                  <code {...props} className="px-1 py-0.5 rounded bg-background-subtle border border-border-default text-[0.9em]">
+                    {children}
+                  </code>
+                );
+              }
+              return (
+                <pre className="my-2 p-3 rounded bg-background-subtle border border-border-default overflow-x-auto">
+                  <code {...props} className={className}>
+                    {children}
+                  </code>
+                </pre>
+              );
+            },
+            h1: ({ node, ...props }) => <h1 {...props} className="text-lg font-semibold mt-3 mb-2" />,
+            h2: ({ node, ...props }) => <h2 {...props} className="text-base font-semibold mt-3 mb-2" />,
+            h3: ({ node, ...props }) => <h3 {...props} className="text-sm font-semibold mt-3 mb-2" />,
+            blockquote: ({ node, ...props }) => (
+              <blockquote {...props} className="border-l-4 border-border-default pl-3 my-2 text-text-secondary" />
+            ),
+            hr: ({ node, ...props }) => <hr {...props} className="my-3 border-border-default" />,
+          }}
+        >
+          {msg.text || ''}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+
   return (
     <AdminChatLayout title={conversationTitle} noPageScroll>
       <div className="h-full min-h-0 flex flex-col gap-4">
         <section className="bg-background-surface border border-border-default rounded-lg overflow-hidden flex-1 min-h-0 flex flex-col">
           <div className="p-4 space-y-3 flex-1 min-h-0 overflow-y-auto bg-background-main">
-            {hasMoreHistory && !isStreaming && (
+            {hasMoreHistory && (
               <button
                 type="button"
                 onClick={loadOlderMessages}
@@ -302,23 +215,10 @@ export default function AdminChatSession() {
             ) : null}
 
             {messages.map((msg) => {
-              const isStreamingThis = isStreaming && msg.role === 'assistant' && msg === messages[messages.length - 1];
               return (
                 <div key={msg.id} className={`rounded-lg p-3 ${bubbleClass(msg)}`}>
                   <p className="text-xs text-text-secondary mb-1">{msg.role === 'user' ? 'You' : 'Assistant'}</p>
-                  {isStreamingThis && !msg.text ? (
-                    <span className="text-sm text-text-muted italic">{retrieverStatus.message || 'Thinking…'}</span>
-                  ) : (
-                    <p className="text-sm text-text-primary whitespace-pre-wrap">
-                      {msg.text}
-                      {isStreamingThis && (
-                        <span
-                          className="inline-block w-0.5 h-3.5 ml-0.5 bg-primary-500 align-text-bottom animate-pulse"
-                          aria-hidden="true"
-                        />
-                      )}
-                    </p>
-                  )}
+                  <MessageBody msg={msg} />
                   {msg.role === 'user' && msg.attachmentNames?.length > 0 && (
                     <ul className="mt-2 text-xs text-text-muted list-disc list-inside">
                       {msg.attachmentNames.map((name) => (
@@ -331,18 +231,6 @@ export default function AdminChatSession() {
             })}
             <div ref={messagesEndRef} />
           </div>
-
-          {isStreaming && (
-            <>
-              <StatusBar stage={retrieverStatus.stage} message={retrieverStatus.message} isStreaming={isStreaming} />
-              {planInfo?.search_query != null && planInfo.search_query !== '' && (
-                <div className="px-4 py-2 text-xs text-text-muted border-t border-border-default bg-background-main">
-                  <span className="font-medium text-text-secondary">Planned search: </span>
-                  {planInfo.search_query}
-                </div>
-              )}
-            </>
-          )}
 
           {attachmentFiles.length > 0 && (
             <div className="px-4 py-2 border-t border-border-default flex flex-wrap gap-2 items-center bg-background-main">
@@ -381,7 +269,7 @@ export default function AdminChatSession() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isStreaming || attachmentFiles.length >= MAX_ATTACHMENTS}
+              disabled={attachmentFiles.length >= MAX_ATTACHMENTS}
               className="inline-flex items-center justify-center h-10 w-10 shrink-0 rounded-md border border-border-default text-text-primary hover:bg-background-subtle disabled:opacity-50"
               title="Attach files"
               aria-label="Attach files"
@@ -394,22 +282,20 @@ export default function AdminChatSession() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !isStreaming) {
+                if (e.key === 'Enter') {
                   e.preventDefault();
                   sendQuestion();
                 }
               }}
               placeholder="Ask a question…"
-              disabled={isStreaming}
               className="flex-1 min-w-0 px-3 py-2 border border-border-default rounded-md bg-background-surface text-text-primary placeholder:text-text-muted text-sm disabled:opacity-60"
             />
             <button
               type="button"
               onClick={sendQuestion}
-              disabled={isStreaming}
               className="px-4 py-2 rounded-md bg-primary-500 text-text-inverse text-sm font-medium hover:bg-primary-600 disabled:opacity-60 shrink-0"
             >
-              {isStreaming ? '…' : 'Send'}
+              Send
             </button>
           </div>
         </section>
