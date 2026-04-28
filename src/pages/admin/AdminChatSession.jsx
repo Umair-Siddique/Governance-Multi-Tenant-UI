@@ -4,11 +4,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AdminChatLayout from './AdminChatLayout';
 import { appendMessage, listMessages } from '../../api/chats';
+import { streamRetriever } from '../../api/retrieverStream';
 
 const MAX_ATTACHMENTS = 12;
 
 const FILE_INPUT_ACCEPT =
-  '.pdf,.docx,.txt,.md,.csv,.json,.log,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  '.pdf,.docx,.txt,.md,.csv,.json,.log,.html,.htm,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/html';
 
 export default function AdminChatSession() {
   const { sessionId } = useParams();
@@ -21,6 +22,7 @@ export default function AdminChatSession() {
   const [attachmentFiles, setAttachmentFiles] = useState([]);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const streamAbortRef = useRef(/** @type {AbortController | null} */ (null));
 
   const conversationId = useMemo(() => {
     const id = (sessionId || '').trim();
@@ -45,6 +47,9 @@ export default function AdminChatSession() {
   async function sendQuestion() {
     const text = question.trim();
     if (!text || !conversationId) return;
+
+    // Cancel any in-flight stream for this view.
+    streamAbortRef.current?.abort?.();
 
     const filesToSend = [...attachmentFiles];
     setAttachmentFiles([]);
@@ -73,6 +78,74 @@ export default function AdminChatSession() {
 
     setMessages((prev) => [...prev, userMessage]);
     setQuestion('');
+
+    const assistantId = `a-${Date.now()}`;
+    const assistantDraft = {
+      id: assistantId,
+      role: 'assistant',
+      text: '',
+      streaming: true,
+      streamStatus: null,
+      streamPlan: null,
+    };
+    setMessages((prev) => [...prev, assistantDraft]);
+
+    const ac = new AbortController();
+    streamAbortRef.current = ac;
+
+    let assistantText = '';
+    const updateAssistant = (patch) => {
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== assistantId) return m;
+          return { ...m, ...patch };
+        })
+      );
+    };
+
+    try {
+      await streamRetriever({
+        query: text,
+        top_k: 8,
+        files: filesToSend,
+        signal: ac.signal,
+        handlers: {
+          onStatus: (data) => {
+            updateAssistant({ streamStatus: data });
+          },
+          onPlan: (data) => {
+            updateAssistant({ streamPlan: data });
+          },
+          onContent: (chunk) => {
+            if (!chunk) return;
+            assistantText += chunk;
+            updateAssistant({ text: assistantText });
+          },
+          onDone: () => {
+            updateAssistant({ streaming: false, streamStatus: null, streamPlan: null });
+          },
+        },
+      });
+
+      // Persist assistant message after the stream completes (best-effort).
+      if (assistantText.trim()) {
+        await appendMessage(conversationId, {
+          role: 'assistant',
+          content: assistantText,
+          metadata: { source: 'retriever_stream' },
+        }).catch(() => null);
+      }
+    } catch (err) {
+      if (ac.signal.aborted) return;
+      const msg = err instanceof Error ? err.message : 'Stream failed';
+      updateAssistant({
+        streaming: false,
+        type: 'refusal',
+        text: assistantText || msg,
+        streamStatus: { stage: 'error', message: msg },
+        streamPlan: null,
+      });
+    }
   }
 
   useEffect(() => {
@@ -149,6 +222,20 @@ export default function AdminChatSession() {
 
     return (
       <div className="text-sm text-text-primary leading-relaxed">
+        {msg.streamStatus?.message && (
+          <p className="text-xs text-text-muted mb-2">
+            {msg.streaming ? 'Streaming: ' : ''}
+            {msg.streamStatus.message}
+          </p>
+        )}
+        {msg.streamPlan && (
+          <details className="mb-2">
+            <summary className="text-xs text-text-secondary cursor-pointer select-none">Retriever plan</summary>
+            <pre className="mt-2 p-2 rounded bg-background-subtle border border-border-default overflow-x-auto text-xs text-text-primary">
+              {JSON.stringify(msg.streamPlan, null, 2)}
+            </pre>
+          </details>
+        )}
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
