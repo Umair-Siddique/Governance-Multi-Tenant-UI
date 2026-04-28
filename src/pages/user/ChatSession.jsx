@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import UserChatLayout from './UserChatLayout';
 import { appendMessage, listMessages } from '../../api/chats';
+import { streamRetriever } from '../../api/retrieverStream';
 
 const MAX_ATTACHMENTS = 12;
 
@@ -21,6 +22,8 @@ export default function ChatSession() {
   const [attachmentFiles, setAttachmentFiles] = useState([]);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const streamAbortRef = useRef(null);
+  const [replying, setReplying] = useState(false);
 
   const conversationId = useMemo(() => {
     const id = (sessionId || '').trim();
@@ -44,10 +47,14 @@ export default function ChatSession() {
 
   async function sendQuestion() {
     const text = question.trim();
-    if (!text || !conversationId) return;
+    if (!text || !conversationId || replying) return;
 
     const filesToSend = [...attachmentFiles];
     setAttachmentFiles([]);
+
+    streamAbortRef.current?.abort();
+    const ac = new AbortController();
+    streamAbortRef.current = ac;
 
     const attachmentNames = filesToSend.map((f) => f.name);
     const savedUser = await appendMessage(conversationId, {
@@ -73,6 +80,97 @@ export default function ChatSession() {
 
     setMessages((prev) => [...prev, userMessage]);
     setQuestion('');
+
+    const assistantId = `a-${Date.now()}`;
+    setReplying(true);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantId,
+        role: 'assistant',
+        text: '',
+        streaming: true,
+        statusText: '',
+      },
+    ]);
+
+    let fullText = '';
+    try {
+      await streamRetriever({
+        query: text,
+        top_k: 8,
+        files: filesToSend,
+        signal: ac.signal,
+        handlers: {
+          onStatus: (data) => {
+            const line = typeof data.message === 'string' ? data.message : '';
+            if (!line) return;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, statusText: line } : m))
+            );
+          },
+          onContent: (chunk) => {
+            fullText += chunk;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, text: fullText, statusText: fullText ? '' : m.statusText }
+                  : m
+              )
+            );
+          },
+          onDone: () => {},
+        },
+      });
+
+      const savedAssistant = await appendMessage(conversationId, {
+        role: 'assistant',
+        content: fullText,
+        metadata: {},
+      }).catch(() => null);
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                id: savedAssistant?.message?.id ?? assistantId,
+                text: fullText,
+                streaming: false,
+                statusText: '',
+                created_at: savedAssistant?.message?.created_at,
+              }
+            : m
+        )
+      );
+    } catch (e) {
+      if (e?.name === 'AbortError') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, streaming: false, statusText: '' } : m
+          )
+        );
+        return;
+      }
+      const errMsg = e instanceof Error ? e.message : String(e);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                text: fullText
+                  ? `${fullText}\n\n—\n*Error:* ${errMsg}`
+                  : `*Error:* ${errMsg}`,
+                streaming: false,
+                statusText: '',
+              }
+            : m
+        )
+      );
+    } finally {
+      setReplying(false);
+      streamAbortRef.current = null;
+    }
   }
 
   useEffect(() => {
@@ -102,6 +200,10 @@ export default function ChatSession() {
       }
     })();
   }, [conversationId, navigate]);
+
+  useEffect(() => {
+    return () => streamAbortRef.current?.abort();
+  }, []);
 
   async function loadOlderMessages() {
     if (!conversationId || loadingHistory || messages.length === 0) return;
@@ -149,6 +251,9 @@ export default function ChatSession() {
 
     return (
       <div className="text-sm text-text-primary leading-relaxed">
+        {msg.streaming && msg.statusText ? (
+          <p className="text-xs text-text-muted mb-2 whitespace-pre-wrap">{msg.statusText}</p>
+        ) : null}
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -269,7 +374,7 @@ export default function ChatSession() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={attachmentFiles.length >= MAX_ATTACHMENTS}
+              disabled={replying || attachmentFiles.length >= MAX_ATTACHMENTS}
               className="inline-flex items-center justify-center h-10 w-10 shrink-0 rounded-md border border-border-default text-text-primary hover:bg-background-subtle disabled:opacity-50"
               title="Attach files"
               aria-label="Attach files"
@@ -288,14 +393,16 @@ export default function ChatSession() {
                 }
               }}
               placeholder="Ask a question…"
+              disabled={replying}
               className="flex-1 min-w-0 px-3 py-2 border border-border-default rounded-md bg-background-surface text-text-primary placeholder:text-text-muted text-sm disabled:opacity-60"
             />
             <button
               type="button"
               onClick={sendQuestion}
+              disabled={replying}
               className="px-4 py-2 rounded-md bg-primary-500 text-text-inverse text-sm font-medium hover:bg-primary-600 disabled:opacity-60 shrink-0"
             >
-              Send
+              {replying ? '…' : 'Send'}
             </button>
           </div>
         </section>
