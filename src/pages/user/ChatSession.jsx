@@ -9,7 +9,7 @@ import { streamRetriever } from '../../api/retrieverStream';
 const MAX_ATTACHMENTS = 12;
 
 const FILE_INPUT_ACCEPT =
-  '.pdf,.docx,.txt,.md,.csv,.json,.log,.html,.htm,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/html';
+  '.pdf,.docx,.txt,.md,.csv,.json,.log,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 export default function ChatSession() {
   const { sessionId } = useParams();
@@ -22,7 +22,8 @@ export default function ChatSession() {
   const [attachmentFiles, setAttachmentFiles] = useState([]);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const streamAbortRef = useRef(/** @type {AbortController | null} */ (null));
+  const streamAbortRef = useRef(null);
+  const [replying, setReplying] = useState(false);
 
   const conversationId = useMemo(() => {
     const id = (sessionId || '').trim();
@@ -46,13 +47,14 @@ export default function ChatSession() {
 
   async function sendQuestion() {
     const text = question.trim();
-    if (!text || !conversationId) return;
-
-    // Cancel any in-flight stream for this view.
-    streamAbortRef.current?.abort?.();
+    if (!text || !conversationId || replying) return;
 
     const filesToSend = [...attachmentFiles];
     setAttachmentFiles([]);
+
+    streamAbortRef.current?.abort();
+    const ac = new AbortController();
+    streamAbortRef.current = ac;
 
     const attachmentNames = filesToSend.map((f) => f.name);
     const savedUser = await appendMessage(conversationId, {
@@ -80,29 +82,19 @@ export default function ChatSession() {
     setQuestion('');
 
     const assistantId = `a-${Date.now()}`;
-    const assistantDraft = {
-      id: assistantId,
-      role: 'assistant',
-      text: '',
-      streaming: true,
-      streamStatus: null,
-      streamPlan: null,
-    };
-    setMessages((prev) => [...prev, assistantDraft]);
+    setReplying(true);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantId,
+        role: 'assistant',
+        text: '',
+        streaming: true,
+        statusText: '',
+      },
+    ]);
 
-    const ac = new AbortController();
-    streamAbortRef.current = ac;
-
-    let assistantText = '';
-    const updateAssistant = (patch) => {
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== assistantId) return m;
-          return { ...m, ...patch };
-        })
-      );
-    };
-
+    let fullText = '';
     try {
       await streamRetriever({
         query: text,
@@ -111,40 +103,73 @@ export default function ChatSession() {
         signal: ac.signal,
         handlers: {
           onStatus: (data) => {
-            updateAssistant({ streamStatus: data });
-          },
-          onPlan: (data) => {
-            updateAssistant({ streamPlan: data });
+            const line = typeof data.message === 'string' ? data.message : '';
+            if (!line) return;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, statusText: line } : m))
+            );
           },
           onContent: (chunk) => {
-            if (!chunk) return;
-            assistantText += chunk;
-            updateAssistant({ text: assistantText });
+            fullText += chunk;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, text: fullText, statusText: fullText ? '' : m.statusText }
+                  : m
+              )
+            );
           },
-          onDone: () => {
-            updateAssistant({ streaming: false, streamStatus: null, streamPlan: null });
-          },
+          onDone: () => {},
         },
       });
 
-      // Persist assistant message after the stream completes (best-effort).
-      if (assistantText.trim()) {
-        await appendMessage(conversationId, {
-          role: 'assistant',
-          content: assistantText,
-          metadata: { source: 'retriever_stream' },
-        }).catch(() => null);
+      const savedAssistant = await appendMessage(conversationId, {
+        role: 'assistant',
+        content: fullText,
+        metadata: {},
+      }).catch(() => null);
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                id: savedAssistant?.message?.id ?? assistantId,
+                text: fullText,
+                streaming: false,
+                statusText: '',
+                created_at: savedAssistant?.message?.created_at,
+              }
+            : m
+        )
+      );
+    } catch (e) {
+      if (e?.name === 'AbortError') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, streaming: false, statusText: '' } : m
+          )
+        );
+        return;
       }
-    } catch (err) {
-      if (ac.signal.aborted) return;
-      const msg = err instanceof Error ? err.message : 'Stream failed';
-      updateAssistant({
-        streaming: false,
-        type: 'refusal',
-        text: assistantText || msg,
-        streamStatus: { stage: 'error', message: msg },
-        streamPlan: null,
-      });
+      const errMsg = e instanceof Error ? e.message : String(e);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                text: fullText
+                  ? `${fullText}\n\n—\n*Error:* ${errMsg}`
+                  : `*Error:* ${errMsg}`,
+                streaming: false,
+                statusText: '',
+              }
+            : m
+        )
+      );
+    } finally {
+      setReplying(false);
+      streamAbortRef.current = null;
     }
   }
 
@@ -175,6 +200,10 @@ export default function ChatSession() {
       }
     })();
   }, [conversationId, navigate]);
+
+  useEffect(() => {
+    return () => streamAbortRef.current?.abort();
+  }, []);
 
   async function loadOlderMessages() {
     if (!conversationId || loadingHistory || messages.length === 0) return;
@@ -222,20 +251,22 @@ export default function ChatSession() {
 
     return (
       <div className="text-sm text-text-primary leading-relaxed">
-        {msg.streamStatus?.message && (
-          <p className="text-xs text-text-muted mb-2">
-            {msg.streaming ? 'Streaming: ' : ''}
-            {msg.streamStatus.message}
-          </p>
-        )}
-        {msg.streamPlan && (
-          <details className="mb-2">
-            <summary className="text-xs text-text-secondary cursor-pointer select-none">Retriever plan</summary>
-            <pre className="mt-2 p-2 rounded bg-background-subtle border border-border-default overflow-x-auto text-xs text-text-primary">
-              {JSON.stringify(msg.streamPlan, null, 2)}
-            </pre>
-          </details>
-        )}
+        {msg.streaming && msg.statusText ? (
+          <div className="flex items-center gap-2 mb-3">
+            <span className="flex gap-0.5 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+            <p className="text-xs text-text-secondary animate-pulse">{msg.statusText}</p>
+          </div>
+        ) : msg.streaming && !msg.text ? (
+          <span className="flex gap-0.5 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '300ms' }} />
+          </span>
+        ) : null}
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -356,7 +387,7 @@ export default function ChatSession() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={attachmentFiles.length >= MAX_ATTACHMENTS}
+              disabled={replying || attachmentFiles.length >= MAX_ATTACHMENTS}
               className="inline-flex items-center justify-center h-10 w-10 shrink-0 rounded-md border border-border-default text-text-primary hover:bg-background-subtle disabled:opacity-50"
               title="Attach files"
               aria-label="Attach files"
@@ -375,14 +406,16 @@ export default function ChatSession() {
                 }
               }}
               placeholder="Ask a question…"
+              disabled={replying}
               className="flex-1 min-w-0 px-3 py-2 border border-border-default rounded-md bg-background-surface text-text-primary placeholder:text-text-muted text-sm disabled:opacity-60"
             />
             <button
               type="button"
               onClick={sendQuestion}
+              disabled={replying}
               className="px-4 py-2 rounded-md bg-primary-500 text-text-inverse text-sm font-medium hover:bg-primary-600 disabled:opacity-60 shrink-0"
             >
-              Send
+              {replying ? '…' : 'Send'}
             </button>
           </div>
         </section>
