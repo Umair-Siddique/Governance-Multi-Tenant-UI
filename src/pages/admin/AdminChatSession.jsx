@@ -252,7 +252,20 @@ export default function AdminChatSession() {
     return (
       <div className="text-sm text-text-primary leading-relaxed">
         {msg.streaming && msg.statusText ? (
-          <p className="text-xs text-text-muted mb-2 whitespace-pre-wrap">{msg.statusText}</p>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="flex gap-0.5 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+            <p className="text-xs text-text-secondary animate-pulse">{msg.statusText}</p>
+          </div>
+        ) : msg.streaming && !msg.text ? (
+          <span className="flex gap-0.5 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '300ms' }} />
+          </span>
         ) : null}
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
