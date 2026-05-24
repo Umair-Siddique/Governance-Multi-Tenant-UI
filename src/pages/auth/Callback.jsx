@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTenantProfile } from '../../api/tenantSettings';
 import { storeTokens } from '../../api/apiClient';
 import { handleGoogleCallback, handleAzureCallback } from '../../api/auth';
+import { useBranding, getActiveDomain } from '../../utils/BrandingContext';
 
 // Guards duplicate callback processing (e.g. StrictMode double invoke in dev).
 let lastProcessedCallbackKey = null;
@@ -25,6 +26,7 @@ export default function Callback() {
     const [searchParams] = useSearchParams();
     const [error, setError] = useState(null);
     const [retrying, setRetrying] = useState(false);
+    const { refreshBranding } = useBranding();
 
     useEffect(() => {
         const processCallback = async () => {
@@ -39,7 +41,6 @@ export default function Callback() {
                 const code = params.get('code');
                 const state = params.get('state');
                 const provider = params.get('provider') || localStorage.getItem('sso_provider');
-                // Clear immediately to avoid stale provider leaking into future attempts.
                 localStorage.removeItem('sso_provider');
 
                 const oauthError = params.get('error');
@@ -47,20 +48,15 @@ export default function Callback() {
                     throw new Error(params.get('error_description') || oauthError);
                 }
 
-                // First, check if backend already processed the code and redirected with tokens
                 const tokens = extractTokenFromUrl();
                 if (tokens.access_token) {
-                    // Backend already exchanged the code — just store tokens
                     storeTokens(tokens);
                 } else if (code && provider === 'azure') {
-                    // Azure browser flow relies on backend-held PKCE verifier.
-                    // Hand code back to backend GET callback so server can exchange it.
                     window.location.replace(`/auth/azure-callback?code=${encodeURIComponent(code)}`);
                     return;
                 } else if (code && provider === 'google') {
                     await handleGoogleCallback({ code, state });
                 } else if (code) {
-                    // No provider hint — try Google first, then Azure.
                     try {
                         await handleGoogleCallback({ code, state });
                     } catch {
@@ -68,21 +64,20 @@ export default function Callback() {
                     }
                 }
 
-
                 await new Promise(resolve => setTimeout(resolve, 500));
 
-                // Fetch tenant profile to ensure it's loaded/cached, but always redirect to dashboard per requirements
-                try {
-                    await getTenantProfile();
-                } catch (e) {
-                    // ignore errors during pre-fetch
-                }
-                
-                // Read the role and redirect correctly instead of hardcoded '/dashboard'
+                await refreshBranding().catch(() => {});
+
                 const { getUserRole, getDashboardRouteForRole } = await import('../../utils/authUtils');
-                navigate(getDashboardRouteForRole(getUserRole()));
+                const destination = getDashboardRouteForRole(getUserRole());
+
+                const slug = getActiveDomain();
+                if (slug && !window.location.pathname.startsWith(`/t/${slug}`)) {
+                    window.location.href = `/t/${slug}${destination}`;
+                } else {
+                    navigate(destination);
+                }
             } catch (err) {
-                // Show a helpful error to the user and allow retrying the check
                 setError(err.message || 'Failed to sign in. Please try again.');
                 setRetrying(false);
             }
@@ -93,29 +88,55 @@ export default function Callback() {
 
     if (error) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-background-subtle">
-                <div className="text-center">
-                    <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-error-soft mb-4">
-                        <svg className="h-6 w-6 text-error-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+            <div className="min-h-screen flex items-center justify-center p-6 auth-page-bg">
+                <div className="w-full max-w-sm animate-fade-in-up">
+                    <div className="auth-card">
+                        <div className="auth-card-accent" />
+                        <div className="px-7 py-8 text-center">
+                            <div className="mx-auto mb-5 h-14 w-14 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center">
+                                <svg className="h-7 w-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900">Authentication Error</h3>
+                            <p className="mt-2 text-sm text-slate-500">{error}</p>
+                            <p className="mt-4 text-xs text-slate-400">Redirecting to login…</p>
+                            <button
+                                onClick={() => navigate('/')}
+                                className="btn-primary-gradient mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
+                            >
+                                Go to Sign In
+                            </button>
+                        </div>
                     </div>
-                    <h3 className="text-lg font-medium text-text-primary">Authentication Error</h3>
-                    <p className="mt-2 text-sm text-text-muted">{error}</p>
-                    <p className="mt-4 text-xs text-text-muted">Redirecting to login...</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background-subtle">
-            <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                <h2 className="text-xl font-semibold text-text-primary">Signing you in...</h2>
-                <p className="mt-2 text-sm text-text-muted">Please wait while we authenticate your session.</p>
+        <div className="min-h-screen flex items-center justify-center p-6 auth-page-bg">
+            <div className="text-center animate-fade-in">
+                <div className="relative mx-auto mb-6 h-16 w-16">
+                    <div
+                        className="h-16 w-16 rounded-full"
+                        style={{
+                            background: 'conic-gradient(from 0deg, #1D4ED8, #4338CA, #7C3AED, #1D4ED8)',
+                            animation: 'spin 1s linear infinite',
+                        }}
+                    />
+                    <div className="absolute inset-1.5 rounded-full bg-white" />
+                    <div
+                        className="absolute inset-0 rounded-full"
+                        style={{
+                            background: 'conic-gradient(from 0deg, #1D4ED8 0deg, transparent 120deg)',
+                            animation: 'spin 1s linear infinite',
+                        }}
+                    />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900">Signing you in…</h2>
+                <p className="mt-2 text-sm text-slate-500">Please wait while we authenticate your session.</p>
             </div>
         </div>
     );
 }
-

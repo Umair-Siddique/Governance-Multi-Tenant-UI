@@ -11,6 +11,8 @@
  * - GET  /api/tenant/settings     → { tenantType, llmProvider, llmKeySet, ocrProvider, ocrKeySet } (no key values)
  * - PUT  /api/tenant/settings     → body: { tenantType?, llmProvider?, llmApiKey?, ocrProvider?, ocrApiKey? }; keys encrypted and stored
  * - POST /api/tenant/test-key     → body: { type: 'llm' | 'ocr' }; server uses stored key to run a minimal test; returns { success, message }
+ * - GET  /api/branding?domain=<domain> → public endpoint; returns branding object or {} if domain not registered
+ * - POST /api/tenants/profile     → upsert tenant profile including custom_domain and branding tenant_details
  */
 
 import { API_BASE, authFetch, handleJsonResponse, getAuthHeaders } from './apiClient';
@@ -65,12 +67,59 @@ export function normalizeTenantProfile(p) {
     return {
         tenant_name: data.tenant_name ?? data.tenantName ?? '',
         tenant_type: data.tenant_type ?? data.tenantType ?? 'self_managed',
+        custom_domain: data.custom_domain ?? '',
         tenant_details: {
             country: details.country ?? '',
             contact_email: details.contact_email ?? details.contactEmail ?? '',
             department: details.department ?? '',
+            // Branding fields
+            app_name: details.app_name ?? '',
+            logo_url: details.logo_url ?? '',
+            favicon_url: details.favicon_url ?? '',
+            primary_color: details.primary_color ?? '',
+            secondary_color: details.secondary_color ?? '',
+            accent_color: details.accent_color ?? '',
+            login_background_url: details.login_background_url ?? '',
+            support_email: details.support_email ?? '',
+            footer_text: details.footer_text ?? '',
         }
     };
+}
+
+// Public endpoint — no auth required.
+// Tries ?name=<slug> first (tenant-name-based, no DNS needed),
+// then falls back to ?domain=<value> (for real custom domain deployments).
+export async function getBranding(identifier) {
+    try {
+        // Primary: lookup by tenant name slug
+        const nameRes = await fetch(`${API_BASE}/api/branding?name=${encodeURIComponent(identifier)}`);
+        if (nameRes.ok) {
+            const data = await nameRes.json().catch(() => ({}));
+            if (data && Object.keys(data).length > 0) return data;
+        }
+        // Fallback: lookup by custom domain (real DNS deployment)
+        const domainRes = await fetch(`${API_BASE}/api/branding?domain=${encodeURIComponent(identifier)}`);
+        if (!domainRes.ok) return {};
+        return await domainRes.json().catch(() => ({}));
+    } catch {
+        return {};
+    }
+}
+
+// Save full branding config (tenant name, type, custom_domain, all branding tenant_details)
+// Calls POST /api/tenants/profile — same upsert endpoint used for tenant creation
+export async function saveBrandingProfile(payload) {
+    const res = await authFetch(`${API_BASE}/api/tenants/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    }).catch(() => null);
+
+    if (!res?.ok) {
+        const err = res ? await res.json().catch(() => ({})) : {};
+        throw new Error(err.message || res?.statusText || 'Failed to save branding');
+    }
+    return res.json().catch(() => ({}));
 }
 
 

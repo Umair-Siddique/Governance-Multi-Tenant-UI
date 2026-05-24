@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrandingProvider, getActiveDomain, setActiveDomain } from './utils/BrandingContext';
 import DesignSystemExample from './components/DesignSystemExample';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
@@ -32,11 +33,30 @@ import ContextManagement from './pages/admin/ContextManagement';
 import AdminChatHome from './pages/admin/AdminChatHome';
 import AdminNewChatRedirect from './pages/admin/AdminNewChatRedirect';
 import AdminChatSession from './pages/admin/AdminChatSession';
+import BrandingSettings from './pages/dashboard/BrandingSettings';
+import TenantPortal from './pages/auth/TenantPortal';
+import AuditLogs from './pages/admin/AuditLogs';
 
 function App() {
+  // Synchronously detect /t/:slug from URL or localStorage.
+  // White-label tenants get a Router basename so the slug persists on every screen.
+  const basename = useMemo(() => {
+    const urlMatch = window.location.pathname.match(/^\/t\/([^/]+)/);
+    if (urlMatch) {
+      setActiveDomain(urlMatch[1]);
+      return `/t/${urlMatch[1]}`;
+    }
+    const stored = getActiveDomain();
+    return stored ? `/t/${stored}` : undefined;
+  }, []);
+
   return (
-    <Router>
+    <BrandingProvider>
+    <Router basename={basename}>
       <Routes>
+        {/* White-label portal — path-based entry point instead of wildcard subdomains */}
+        <Route path="/t/:tenantSlug" element={<TenantPortal />} />
+
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
@@ -49,11 +69,13 @@ function App() {
         <Route path="/dashboard/user-management" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
         <Route path="/dashboard/tenant-settings" element={<ProtectedRoute allowedRoles={['admin']}><TenantSettings /></ProtectedRoute>} />
         <Route path="/dashboard/context-management" element={<ProtectedRoute allowedRoles={['admin']}><ContextManagement /></ProtectedRoute>} />
+        <Route path="/dashboard/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AuditLogs /></ProtectedRoute>} />
 
         {/* Settings Routes (Admin) */}
         <Route path="/dashboard/settings" element={<ProtectedRoute allowedRoles={['admin']}><Navigate to="/dashboard/settings/llm-providers" replace /></ProtectedRoute>} />
         <Route path="/dashboard/settings/llm-providers" element={<ProtectedRoute allowedRoles={['admin']}><LLMProviders /></ProtectedRoute>} />
         <Route path="/dashboard/settings/profile" element={<ProtectedRoute allowedRoles={['admin']}><ProfileSettings /></ProtectedRoute>} />
+        <Route path="/dashboard/settings/branding" element={<ProtectedRoute allowedRoles={['admin']}><BrandingSettings /></ProtectedRoute>} />
 
         {/* --- Admin Chat Routes --- */}
         <Route path="/dashboard/chat" element={<ProtectedRoute allowedRoles={['admin']}><AdminChatHome /></ProtectedRoute>} />
@@ -91,6 +113,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
+    </BrandingProvider>
   );
 }
 

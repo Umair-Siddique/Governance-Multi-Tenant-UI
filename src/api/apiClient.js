@@ -13,6 +13,32 @@
 // to the backend, so we always use relative URLs.
 export const API_BASE = '';
 
+// ── JWT helpers ─────────────────────────────────────────
+
+function decodeJwtExp(token) {
+    try {
+        const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(atob(b64));
+        return typeof payload.exp === 'number' ? payload.exp : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Returns true only when the token definitely has an 'exp' claim that is in the past.
+ * If the token cannot be decoded or has no exp, returns false (assume valid).
+ */
+function isTokenExpired(token) {
+    if (!token) return true;
+    const exp = decodeJwtExp(token);
+    if (exp === null) return false;
+    return exp * 1000 < Date.now();
+}
+
+// Prevent concurrent session-expired redirects
+let _sessionExpiredRedirectPending = false;
+
 // ── Token Storage Keys ──────────────────────────────────
 const ACCESS_TOKEN_KEY = 'authToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
@@ -47,20 +73,30 @@ export function storeTokens(data, persistent = true) {
     // Track which storage mode is being used
     localStorage.setItem(STORAGE_MODE_KEY, persistent ? 'persistent' : 'session');
 
-    // Access token
+    // Access token — try all known field name variants
     const access =
         data.token ||
         data.access_token ||
+        data.accessToken ||
         data.jwt ||
         data.session?.access_token ||
+        data.session?.accessToken ||
         data.data?.session?.access_token ||
+        data.data?.session?.accessToken ||
+        data.data?.access_token ||
+        data.data?.token ||
         null;
 
-    // Refresh token
+    // Refresh token — try all known field name variants
     const refresh =
         data.refresh_token ||
+        data.refreshToken ||
         data.session?.refresh_token ||
+        data.session?.refreshToken ||
         data.data?.session?.refresh_token ||
+        data.data?.session?.refreshToken ||
+        data.data?.refresh_token ||
+        data.data?.refreshToken ||
         null;
 
     if (access) storage.setItem(ACCESS_TOKEN_KEY, access);
@@ -175,12 +211,22 @@ export async function authFetch(url, options = {}) {
         credentials: options.credentials || 'include',
     });
 
-    // If 401 → try refresh + retry once
+    // If 401 → only attempt refresh when the token is actually expired.
+    // A 401 on a still-valid token is a permission/role issue — do NOT kill the session.
     if (res.status === 401) {
+        const currentToken = getAccessToken();
+
+        // If the stored token is NOT expired, this is a backend permission/role rejection,
+        // not a session expiry. Return the 401 so the calling component can handle it
+        // without blowing up the user's session.
+        if (currentToken && !isTokenExpired(currentToken)) {
+            return res;
+        }
+
         const refreshed = await refreshAccessToken();
 
         if (refreshed) {
-            // Retry with new token
+            // Retry original request with the new access token
             const retryAuthHeaders = getAuthHeaders();
             if (options.body instanceof FormData) {
                 delete retryAuthHeaders['Content-Type'];
@@ -195,11 +241,30 @@ export async function authFetch(url, options = {}) {
                 credentials: options.credentials || 'include',
             });
         } else {
-            // Refresh failed — session is dead
-            clearTokens();
-            // Redirect to login (only in browser context)
-            if (typeof window !== 'undefined' && window.location.pathname !== '/') {
-                window.location.href = '/?session=expired';
+            // Refresh failed (or no refresh token) — session is genuinely dead.
+            // Only redirect once, even if multiple requests fail simultaneously.
+            if (!_sessionExpiredRedirectPending && typeof window !== 'undefined') {
+                _sessionExpiredRedirectPending = true;
+                clearTokens();
+                const slug = localStorage.getItem('tenant_domain');
+                const loginPath = slug ? `/t/${slug}/` : '/';
+                const currentPath = window.location.pathname;
+                const alreadyOnAuth = currentPath === loginPath
+                    || currentPath === '/'
+                    || currentPath.startsWith('/auth/')
+                    || currentPath.startsWith('/register')
+                    || currentPath.startsWith('/forgot-password')
+                    || currentPath.startsWith('/reset-password')
+                    || currentPath.startsWith('/accept-invite');
+                if (!alreadyOnAuth) {
+                    // Show "session expired" only when there was a token that failed to refresh.
+                    // If no token existed at all, just go to login without the expired param.
+                    window.location.href = currentToken
+                        ? `${loginPath}?session=expired`
+                        : loginPath;
+                } else {
+                    _sessionExpiredRedirectPending = false;
+                }
             }
         }
     }

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/dashboard/Sidebar';
-import ThemeToggle from '../../components/ui/ThemeToggle';
 import { getInvitations, sendInvitation, revokeInvitation } from '../../api/invitations';
 
 const ROLES = ['Admin', 'Editor', 'Reviewer', 'User'];
@@ -156,34 +155,33 @@ export default function UserManagement() {
     const filteredUsers = users.filter(user => filterStatus === 'All' ? true : user.status === filterStatus);
 
     return (
-        <div className="min-h-screen bg-background-main flex">
+        <div className="min-h-screen bg-slate-50 flex">
             <Sidebar />
 
             <div className="flex-1 flex flex-col min-w-0">
-                <header className="bg-background-surface shadow">
-                    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-                        <h1 className="text-3xl font-bold text-text-primary">User Management</h1>
-                        <div className="flex items-center gap-3">
-                            <ThemeToggle />
-                            {/* <span className="text-sm font-medium text-text-primary">Welcome Admin</span> */}
+                <header className="admin-header">
+                    <div className="px-6 py-4 flex items-center justify-between gap-4">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-900 leading-tight">User Management</h1>
+                            <p className="text-xs text-slate-400 mt-0.5">Admin Panel</p>
                         </div>
                     </div>
                 </header>
 
                 <main className="flex-1 p-6">
-                    <div className="bg-background-surface rounded-lg shadow border border-border-default overflow-hidden">
-                        <div className="px-6 py-4 border-b border-border-default flex items-center justify-between gap-4 flex-wrap">
+                    <div className="admin-card overflow-hidden">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-4 flex-wrap">
                             <div className="flex items-center gap-4 flex-wrap">
-                                <h3 className="text-base font-semibold text-text-primary">All users</h3>
+                                <h3 className="text-base font-semibold text-slate-800">All users</h3>
 
                                 {/* Status Filter */}
                                 <div className="flex items-center gap-2">
-                                    <label htmlFor="filterStatus" className="text-xs text-text-muted">Filter:</label>
+                                    <label htmlFor="filterStatus" className="text-xs text-slate-500">Filter:</label>
                                     <select
                                         id="filterStatus"
                                         value={filterStatus}
                                         onChange={(e) => setFilterStatus(e.target.value)}
-                                        className="px-2 py-1 border border-border-default rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 text-xs bg-background-surface"
+                                        className="admin-select"
                                     >
                                         {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
@@ -193,32 +191,33 @@ export default function UserManagement() {
                             <button
                                 type="button"
                                 onClick={() => setShowInviteForm((v) => !v)}
-                                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-text-inverse text-sm font-medium rounded-md shadow-sm transition-colors"
+                                className="btn-primary-gradient px-4 py-2 rounded-lg text-sm font-semibold text-white"
                             >
                                 Invite
                             </button>
                         </div>
+
                         {showInviteForm && (
-                            <div className="px-6 py-4 bg-background-subtle border-b border-border-default">
+                            <div className="px-6 py-4 bg-slate-50 border-b border-slate-100">
                                 <form onSubmit={handleInvite} className="flex flex-wrap items-end gap-4">
                                     <div className="flex-1 min-w-[200px]">
-                                        <label htmlFor="invite-email" className="block text-sm font-medium text-text-primary mb-1">Email address</label>
+                                        <label htmlFor="invite-email" className="block text-sm font-medium text-slate-700 mb-1">Email address</label>
                                         <input
                                             id="invite-email"
                                             type="email"
                                             value={inviteEmail}
                                             onChange={(e) => setInviteEmail(e.target.value)}
                                             placeholder="user@example.com"
-                                            className="w-full px-3 py-2 border border-border-default rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 text-sm bg-background-surface"
+                                            className="admin-input"
                                         />
                                     </div>
                                     <div className="w-40">
-                                        <label htmlFor="invite-role" className="block text-sm font-medium text-text-primary mb-1">Role</label>
+                                        <label htmlFor="invite-role" className="block text-sm font-medium text-slate-700 mb-1">Role</label>
                                         <select
                                             id="invite-role"
                                             value={inviteRole}
                                             onChange={(e) => setInviteRole(e.target.value)}
-                                            className="w-full px-3 py-2 border border-border-default rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 text-sm bg-background-surface"
+                                            className="admin-select w-full"
                                         >
                                             {ROLES.map((r) => (
                                                 <option key={r} value={r}>{r}</option>
@@ -228,15 +227,15 @@ export default function UserManagement() {
                                     <button
                                         type="submit"
                                         disabled={inviting}
-                                        className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-text-inverse text-sm font-medium rounded-md shadow-sm transition-colors disabled:opacity-50"
+                                        className="btn-primary-gradient px-4 py-2 rounded-lg text-sm font-semibold text-white"
                                     >
-                                        {inviting ? 'Sending...' : 'Send invite'}
+                                        {inviting ? 'Sending…' : 'Send invite'}
                                     </button>
                                     <button
                                         type="button"
                                         disabled={inviting}
                                         onClick={() => setShowInviteForm(false)}
-                                        className="px-4 py-2 border border-border-default rounded-md text-sm font-medium text-text-primary hover:bg-background-subtle disabled:opacity-50"
+                                        className="btn-outline px-4 py-2 rounded-lg text-sm font-medium"
                                     >
                                         Cancel
                                     </button>
@@ -245,42 +244,47 @@ export default function UserManagement() {
                         )}
 
                         {error && (
-                            <div className="mx-6 mt-4 mb-2 p-3 bg-error-soft text-error-500 border border-error-500 rounded-md text-sm">
+                            <div className="mx-6 mt-4 mb-2 p-3 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm">
                                 {error}
                             </div>
                         )}
 
                         <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-border-default">
-                                <thead className="bg-background-subtle">
-                                    <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Email</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Role</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Status</th>
-                                        <th className="px-6 py-3 text-right text-xs font-medium text-text-muted uppercase tracking-wider">Revoke</th>
-                                        <th className="px-6 py-3 text-right text-xs font-medium text-text-muted uppercase tracking-wider">Delete</th>
+                            <table className="min-w-full">
+                                <thead>
+                                    <tr className="admin-table-head">
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Status</th>
+                                        <th style={{ textAlign: 'right' }}>Revoke</th>
+                                        <th style={{ textAlign: 'right' }}>Delete</th>
                                     </tr>
                                 </thead>
-                                <tbody className="bg-background-surface divide-y divide-border-default">
+                                <tbody>
                                     {loading ? (
                                         <tr>
-                                            <td colSpan="5" className="px-6 py-8 text-center text-sm text-text-muted">
-                                                Loading users and invitations...
+                                            <td colSpan="5" className="px-6 py-8 text-center text-sm text-slate-400">
+                                                Loading users and invitations…
                                             </td>
                                         </tr>
                                     ) : filteredUsers.length === 0 ? (
                                         <tr>
-                                            <td colSpan="5" className="px-6 py-8 text-center text-sm text-text-muted">
+                                            <td colSpan="5" className="px-6 py-8 text-center text-sm text-slate-400">
                                                 No users found for the selected filter.
                                             </td>
                                         </tr>
                                     ) : (
                                         filteredUsers.map((user) => (
-                                            <tr key={user.id} className="hover:bg-background-subtle">
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary">{user.email}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{user.role}</td>
+                                            <tr key={user.id} className="admin-table-row">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-800">{user.email}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{user.role}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${user.status === 'Accepted' ? 'bg-success-soft text-success-500' : user.status === 'Pending' ? 'bg-warning-soft text-warning-500' : user.status === 'Revoked' || user.status === 'Expired' ? 'bg-error-soft text-error-500' : 'bg-background-subtle text-text-muted'}`}>
+                                                    <span className={`inline-flex px-2.5 py-0.5 text-xs font-semibold rounded-full ${
+                                                        user.status === 'Accepted' ? 'badge-approved' :
+                                                        user.status === 'Pending'  ? 'badge-pending'  :
+                                                        user.status === 'Revoked' || user.status === 'Expired' ? 'badge-rejected' :
+                                                        'badge-default'
+                                                    }`}>
                                                         {user.status}
                                                     </span>
                                                 </td>
@@ -289,17 +293,17 @@ export default function UserManagement() {
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeactivate(user)}
-                                                            className="text-error-500 hover:text-error-500 font-medium text-xs"
+                                                            className="text-red-500 hover:text-red-700 font-medium text-xs transition-colors"
                                                         >
                                                             Revoke Invite
                                                         </button>
                                                     ) : user.type === 'invite' ? (
-                                                        <span className="text-xs text-text-muted">-</span>
+                                                        <span className="text-xs text-slate-400">—</span>
                                                     ) : user.status === 'Active' ? (
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeactivate(user)}
-                                                            className="text-error-500 hover:text-error-500 font-medium text-xs ml-2"
+                                                            className="text-red-500 hover:text-red-700 font-medium text-xs ml-2 transition-colors"
                                                         >
                                                             Deactivate
                                                         </button>
@@ -307,7 +311,7 @@ export default function UserManagement() {
                                                         <button
                                                             type="button"
                                                             onClick={() => handleActivate(user)}
-                                                            className="text-success-500 hover:text-success-500 font-medium text-xs ml-2"
+                                                            className="text-green-600 hover:text-green-800 font-medium text-xs ml-2 transition-colors"
                                                         >
                                                             Activate
                                                         </button>
@@ -318,7 +322,7 @@ export default function UserManagement() {
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeactivate(user)}
-                                                            className="inline-flex items-center justify-center w-7 h-7 rounded-md text-error-500 hover:bg-error-soft"
+                                                            className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                                                             title="Delete invitation"
                                                             aria-label="Delete invitation"
                                                         >
@@ -331,7 +335,7 @@ export default function UserManagement() {
                                                             </svg>
                                                         </button>
                                                     ) : (
-                                                        <span className="text-xs text-text-muted">-</span>
+                                                        <span className="text-xs text-slate-400">—</span>
                                                     )}
                                                 </td>
                                             </tr>

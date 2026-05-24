@@ -475,22 +475,31 @@ export default function ContextManagement() {
     (showPineconeColumn ? 1 : 0) +
     2;
 
+  const checkboxCls = 'h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0';
+  const badgeCls = (s) => {
+    const n = normalizeStatus(s);
+    if (n === 'approved') return 'badge-approved';
+    if (n === 'rejected' || n === 'processing_failed') return 'badge-rejected';
+    if (n === 'review' || n === 'pending_processing') return 'badge-review';
+    if (n === 'draft') return 'badge-draft';
+    return 'badge-default';
+  };
+
   return (
     <AdminLayout title="Context Management">
-      <div className="max-w-7xl mx-auto space-y-5">
+      <div className="max-w-7xl mx-auto space-y-4">
 
-        {/* ── Status tabs */}
-        <section className="bg-background-surface border border-border-default rounded-lg p-4">
+        {/* Status tabs */}
+        <section className="bg-white border border-slate-100 rounded-2xl p-4" style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
           <div className="flex flex-wrap gap-2">
             {STATUS_TABS.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === tab.key
-                    ? 'bg-primary-500 text-text-inverse'
-                    : 'bg-background-subtle text-text-secondary hover:text-text-primary'
-                  }`}
+                className={`px-4 py-1.5 rounded-xl text-sm font-semibold transition-all duration-150 ${
+                  activeTab === tab.key ? 'tab-active' : 'tab-inactive'
+                }`}
               >
                 {tab.label}
               </button>
@@ -498,17 +507,16 @@ export default function ContextManagement() {
           </div>
         </section>
 
-        {/* ── Bulk actions toolbar */}
-        <section className="bg-background-surface border border-border-default rounded-lg p-4 space-y-3">
-          <div className="flex flex-wrap gap-3 items-center">
-
+        {/* Bulk actions toolbar */}
+        <section className="bg-white border border-slate-100 rounded-2xl p-4 space-y-3" style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
+          <div className="flex flex-wrap gap-2.5 items-center">
             {activeTab !== 'approved' && (
               <>
                 <button
                   type="button"
                   onClick={handleBulkApproveSelected}
                   disabled={isSubmitting || selectedRows.length === 0}
-                  className="px-3 py-2 rounded-md bg-success-500 text-text-inverse text-sm font-medium disabled:opacity-50"
+                  className="btn-success px-4 py-2 rounded-xl text-sm font-semibold"
                 >
                   Approve selected
                 </button>
@@ -518,14 +526,14 @@ export default function ContextManagement() {
                   value={bulkRejectReason}
                   onChange={(e) => setBulkRejectReason(e.target.value)}
                   placeholder="Reject reason (required for bulk reject)"
-                  className="min-w-[280px] flex-1 px-3 py-2 border border-border-default rounded-md bg-background-surface text-sm"
+                  className="admin-input min-w-[260px] flex-1"
                 />
 
                 <button
                   type="button"
                   onClick={handleBulkRejectSelected}
                   disabled={isSubmitting || selectedRows.length === 0 || !bulkRejectReason.trim()}
-                  className="px-3 py-2 rounded-md bg-error-500 text-text-inverse text-sm font-medium disabled:opacity-50"
+                  className="btn-danger px-4 py-2 rounded-xl text-sm font-semibold"
                 >
                   Reject selected
                 </button>
@@ -537,7 +545,7 @@ export default function ContextManagement() {
                 type="button"
                 onClick={handleApproveAllDrafts}
                 disabled={isSubmitting}
-                className="px-3 py-2 rounded-md border border-border-default text-text-primary text-sm font-medium hover:bg-background-subtle disabled:opacity-50"
+                className="btn-outline px-4 py-2 rounded-xl text-sm font-semibold"
               >
                 Approve all drafts
               </button>
@@ -547,178 +555,121 @@ export default function ContextManagement() {
               <button
                 type="button"
                 onClick={handlePublishToPineconeSelected}
-                disabled={
-                  isSubmitting ||
-                  selectedRows.filter((r) => r.source === 'document').length === 0
-                }
-                className="px-3 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+                disabled={isSubmitting || selectedRows.filter((r) => r.source === 'document').length === 0}
+                className="btn-primary-gradient px-4 py-2 rounded-xl text-sm font-semibold text-white"
               >
                 Publish to Pinecone
               </button>
             )}
           </div>
 
-          {/* ── Pinecone stats bar — only shown on Approved tab */}
+          {/* Pinecone stats bar */}
           {activeTab === 'approved' && rows.length > 0 && (
-            <div className="flex flex-wrap items-center gap-4 px-3 py-2.5 bg-background-subtle border border-border-default rounded-md text-sm">
-              <span className="text-text-secondary">
-                Total:{' '}
-                <span className="font-semibold text-text-primary">
-                  {pineconeCounts.total}
-                </span>
-              </span>
-              <span className="text-text-secondary">
-                Processing:{' '}
-                <span className="font-semibold text-warning-500">
-                  {pineconeCounts.processing}
-                </span>
-              </span>
-              <span className="text-text-secondary">
-                Published:{' '}
-                <span className="font-semibold text-success-500">
-                  {pineconeCounts.done}
-                </span>
-              </span>
-              <span className="text-text-secondary">
-                Failed:{' '}
-                <span className="font-semibold text-error-500">
-                  {pineconeCounts.failed}
-                </span>
-              </span>
+            <div className="flex flex-wrap items-center gap-5 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+              <span className="text-slate-500">Total: <span className="font-bold text-slate-800">{pineconeCounts.total}</span></span>
+              <span className="text-slate-500">Processing: <span className="font-bold text-amber-600">{pineconeCounts.processing}</span></span>
+              <span className="text-slate-500">Published: <span className="font-bold text-green-600">{pineconeCounts.done}</span></span>
+              <span className="text-slate-500">Failed: <span className="font-bold text-red-600">{pineconeCounts.failed}</span></span>
             </div>
           )}
 
-          {error && <p className="text-xs text-error-500">{error}</p>}
+          {error && (
+            <p className="text-xs text-red-500 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+              {error}
+            </p>
+          )}
 
-          <p className="text-xs text-text-muted">
-            Selected: {selectedRows.length} | Unified list includes CSV and PDF/DOCX records.
+          <p className="text-xs text-slate-400">
+            {selectedRows.length} selected &nbsp;·&nbsp; Unified list includes CSV and PDF/DOCX records.
           </p>
         </section>
 
-        {/* ── Main table */}
-        <section className="bg-background-surface border border-border-default rounded-lg overflow-hidden">
+        {/* Main table */}
+        <section className="bg-white border border-slate-100 rounded-2xl overflow-hidden" style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border-default">
-              <thead className="bg-background-subtle">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">
-                    <input type="checkbox" checked={allChecked} onChange={toggleSelectAll} />
+            <table className="min-w-full">
+              <thead>
+                <tr className="admin-table-head">
+                  <th style={{ paddingLeft: '1rem' }}>
+                    <input type="checkbox" className={checkboxCls} checked={allChecked} onChange={toggleSelectAll} />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Filename</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Type</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Created at</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Chunk count</th>
-                  {showRejectionReasonColumn && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Rejection reason</th>
-                  )}
-                  {showPineconeColumn && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted uppercase tracking-wider">Pinecone</th>
-                  )}
-                  <th className="px-4 py-3 text-right text-xs font-medium text-text-muted uppercase tracking-wider">
-                    {activeTab === 'approved' ? 'Detail' : 'Status override'}
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-text-muted uppercase tracking-wider">Delete</th>
+                  <th>Filename</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Created at</th>
+                  <th>Chunks</th>
+                  {showRejectionReasonColumn && <th>Rejection reason</th>}
+                  {showPineconeColumn && <th>Pinecone</th>}
+                  <th style={{ textAlign: 'right', paddingRight: '1rem' }}>{activeTab === 'approved' ? 'Detail' : 'Override'}</th>
+                  <th style={{ textAlign: 'right', paddingRight: '1rem' }}>Delete</th>
                 </tr>
               </thead>
 
-              <tbody className="bg-background-surface divide-y divide-border-default">
+              <tbody>
                 {loading && (
-                  <tr>
-                    <td colSpan={tableColSpan} className="px-4 py-8 text-center text-sm text-text-muted">
-                      Loading lifecycle items...
-                    </td>
-                  </tr>
+                  <tr><td colSpan={tableColSpan} className="px-4 py-10 text-center text-sm text-slate-400">Loading…</td></tr>
                 )}
                 {!loading && error && (
-                  <tr>
-                    <td colSpan={tableColSpan} className="px-4 py-8 text-center text-sm text-error-500">
-                      {error}
-                    </td>
-                  </tr>
+                  <tr><td colSpan={tableColSpan} className="px-4 py-10 text-center text-sm text-red-500">{error}</td></tr>
                 )}
                 {!loading && !error && rows.length === 0 && (
-                  <tr>
-                    <td colSpan={tableColSpan} className="px-4 py-8 text-center text-sm text-text-muted">
-                      No items in this lifecycle state.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={tableColSpan} className="px-4 py-10 text-center text-sm text-slate-400">No items in this state.</td></tr>
                 )}
 
                 {!loading && !error && rows.map((row) => {
                   const key = rowKey(row);
                   const selected = selectedKeys.includes(key);
                   const overrideStatus = getOverrideStatus(row);
-
-                  // Resolve best available Pinecone status — backend field OR active poll
-                  const { status: pineconeStatus, pineconeId, error: pineconeError } =
-                    resolvePineconeStatus(row, pineconeByDocument);
+                  const { status: pineconeStatus, pineconeId, error: pineconeError } = resolvePineconeStatus(row, pineconeByDocument);
 
                   return (
-                    <tr
-                      key={key}
-                      className="hover:bg-background-subtle cursor-pointer"
-                      onClick={() => openDetail(row)}
-                    >
+                    <tr key={key} className="admin-table-row cursor-pointer" onClick={() => openDetail(row)}>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() => toggleSelectRow(row)}
-                        />
+                        <input type="checkbox" className={checkboxCls} checked={selected} onChange={() => toggleSelectRow(row)} />
                       </td>
 
-                      <td className="px-4 py-3 text-sm text-text-primary">{row.filename}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-slate-900 max-w-[260px] truncate">{row.filename}</td>
 
-                      <td className="px-4 py-3 text-sm text-text-secondary">
-                        {String(row.fileType || '-').toLowerCase()}
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          {String(row.fileType || '-').toLowerCase()}
+                        </span>
                       </td>
 
-                      <td className="px-4 py-3 text-sm">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusTone(row.status)}`}>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${badgeCls(row.status)}`}>
                           {String(row.status || '-').replace(/_/g, ' ')}
                         </span>
                       </td>
 
-                      <td className="px-4 py-3 text-sm text-text-secondary">{formatDate(row.createdAt)}</td>
-                      <td className="px-4 py-3 text-sm text-text-secondary">{row.chunkCount ?? '-'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-500 whitespace-nowrap">{formatDate(row.createdAt)}</td>
+                      <td className="px-4 py-3 text-sm text-slate-500">{row.chunkCount ?? '-'}</td>
 
                       {showRejectionReasonColumn && (
-                        <td className="px-4 py-3 text-sm text-text-secondary">
-                          {row.rejectionReason || '-'}
-                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-500 max-w-[180px] truncate">{row.rejectionReason || '-'}</td>
                       )}
 
                       {showPineconeColumn && (
                         <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
                           {row.source === 'document' ? (
                             <>
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${pineconeTone(pineconeStatus)}`}>
-                                {pineconeStatus}
-                              </span>
-                              {pineconeError && (
-                                <p className="text-xs text-error-500 mt-1 max-w-xs truncate" title={pineconeError}>
-                                  ⚠ {pineconeError}
-                                </p>
-                              )}
-                              {pineconeId && (
-                                <p className="text-xs text-text-muted mt-1 truncate" title={pineconeId}>
-                                  ID: {pineconeId}
-                                </p>
-                              )}
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${pineconeTone(pineconeStatus)}`}>{pineconeStatus}</span>
+                              {pineconeError && <p className="text-xs text-red-500 mt-1 max-w-xs truncate">⚠ {pineconeError}</p>}
+                              {pineconeId && <p className="text-xs text-slate-400 mt-1 truncate">ID: {pineconeId}</p>}
                             </>
                           ) : (
-                            <span className="text-xs text-text-muted">n/a</span>
+                            <span className="text-xs text-slate-400">n/a</span>
                           )}
                         </td>
                       )}
 
-                      <td className="px-4 py-3 text-right text-sm" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         {activeTab === 'approved' && row.source === 'document' ? (
                           <button
                             type="button"
                             onClick={() => openDetail(row)}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border-default text-xs text-primary-500 hover:bg-background-subtle font-medium"
+                            className="btn-outline px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-200"
                           >
                             View Detail
                           </button>
@@ -726,10 +677,9 @@ export default function ContextManagement() {
                           <div className="inline-flex items-center gap-2">
                             <select
                               value={overrideStatus}
-                              onChange={(e) =>
-                                setOverrideStatusByKey((prev) => ({ ...prev, [key]: e.target.value }))
-                              }
-                              className="px-2 py-1 border border-border-default rounded-md bg-background-surface text-xs"
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setOverrideStatusByKey((prev) => ({ ...prev, [key]: e.target.value }))}
+                              className="admin-select"
                             >
                               <option value="draft">draft</option>
                               <option value="review">review</option>
@@ -739,7 +689,7 @@ export default function ContextManagement() {
                               type="button"
                               onClick={() => handleSingleStatusOverride(row)}
                               disabled={isSubmitting}
-                              className="px-2 py-1 rounded-md border border-border-default text-text-primary text-xs hover:bg-background-subtle disabled:opacity-50"
+                              className="btn-primary-gradient px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
                             >
                               Apply
                             </button>
@@ -747,35 +697,21 @@ export default function ContextManagement() {
                         )}
                       </td>
 
-                      <td className="px-4 py-3 text-right text-sm" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         {row.source === 'document' ? (
                           <button
                             type="button"
                             onClick={() => handleDeleteRow(row)}
                             disabled={isSubmitting}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-md text-error-500 hover:bg-error-soft disabled:opacity-50"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                             title="Delete document"
-                            aria-label="Delete document"
                           >
-                            <svg
-                              className="w-4 h-4"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="M3 6h18" />
-                              <path d="M8 6V4h8v2" />
-                              <path d="M19 6l-1 14H6L5 6" />
-                              <path d="M10 11v6" />
-                              <path d="M14 11v6" />
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" />
                             </svg>
                           </button>
                         ) : (
-                          <span className="text-xs text-text-muted">-</span>
+                          <span className="text-xs text-slate-300">—</span>
                         )}
                       </td>
                     </tr>
@@ -787,118 +723,81 @@ export default function ContextManagement() {
         </section>
       </div>
 
-      {/* ── Detail panel modal */}
+      {/* Detail modal */}
       {detailRow && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-950/60"
-            onClick={closeDetail}
-            aria-label="Close details"
-          />
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-background-surface border border-border-default rounded-lg shadow-xl">
-            <div className="px-5 py-4 border-b border-border-default flex items-center justify-between gap-3">
+          <button type="button" className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={closeDetail} aria-label="Close" />
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-100">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 sticky top-0 bg-white z-10">
               <div>
-                <h3 className="text-base font-semibold text-text-primary">{detailRow.filename}</h3>
-                <p className="text-xs text-text-muted mt-1">{detailRow.id}</p>
+                <h3 className="text-base font-bold text-slate-900">{detailRow.filename}</h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-mono">{detailRow.id}</p>
               </div>
-              <button type="button" onClick={closeDetail} className="px-2 py-1 text-sm text-text-secondary hover:text-text-primary">
-                Close
+              <button type="button" onClick={closeDetail} className="h-8 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
-              {detailLoading && <p className="text-sm text-text-muted">Loading details...</p>}
-              {!detailLoading && detailError && <p className="text-sm text-error-500">{detailError}</p>}
+            <div className="p-6 space-y-5">
+              {detailLoading && <p className="text-sm text-slate-400">Loading details…</p>}
+              {!detailLoading && detailError && <p className="text-sm text-red-500">{detailError}</p>}
 
               {!detailLoading && !detailError && detailData && (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-                    <div className="border border-border-default rounded-md p-3">
-                      <p className="text-xs text-text-muted">Type</p>
-                      <p className="mt-1 text-text-primary">
-                        {detailData.item?.file_type || detailData.item?.fileType || (detailRow.source === 'csv' ? 'csv' : '-')}
-                      </p>
-                    </div>
-                    <div className="border border-border-default rounded-md p-3">
-                      <p className="text-xs text-text-muted">Status</p>
-                      <p className="mt-1 text-text-primary">{String(detailData.item?.status || '-')}</p>
-                    </div>
-                    <div className="border border-border-default rounded-md p-3">
-                      <p className="text-xs text-text-muted">Chunk count</p>
-                      <p className="mt-1 text-text-primary">{detailData.item?.chunk_count ?? detailChunks.length ?? 0}</p>
-                    </div>
-                    <div className="border border-border-default rounded-md p-3">
-                      <p className="text-xs text-text-muted">Created at</p>
-                      <p className="mt-1 text-text-primary">
-                        {formatDate(detailData.item?.created_at || detailData.item?.createdAt)}
-                      </p>
-                    </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: 'Type', value: detailData.item?.file_type || detailData.item?.fileType || (detailRow.source === 'csv' ? 'csv' : '-') },
+                      { label: 'Status', value: String(detailData.item?.status || '-') },
+                      { label: 'Chunk count', value: detailData.item?.chunk_count ?? detailChunks.length ?? 0 },
+                      { label: 'Created at', value: formatDate(detailData.item?.created_at || detailData.item?.createdAt) },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{label}</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
+                      </div>
+                    ))}
                   </div>
 
-                  {/* Pinecone status in detail — uses resolvePineconeStatus for cross-device */}
                   {detailRow.source === 'document' && (() => {
                     const resolved = resolvePineconeStatus(detailRow, pineconeByDocument);
                     return (
-                      <div className="border border-border-default rounded-md p-3 flex flex-wrap items-center gap-3">
-                        <p className="text-xs text-text-muted shrink-0">Pinecone</p>
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${pineconeTone(resolved.status)}`}>
-                          {resolved.status}
-                        </span>
-                        {resolved.pineconeId && (
-                          <span className="text-xs text-text-muted truncate">ID: {resolved.pineconeId}</span>
-                        )}
-                        {resolved.error && (
-                          <span className="text-xs text-error-500 truncate">⚠ {resolved.error}</span>
-                        )}
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-3">
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Pinecone</p>
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${pineconeTone(resolved.status)}`}>{resolved.status}</span>
+                        {resolved.pineconeId && <span className="text-xs text-slate-400 font-mono truncate">ID: {resolved.pineconeId}</span>}
+                        {resolved.error && <span className="text-xs text-red-500 truncate">⚠ {resolved.error}</span>}
                       </div>
                     );
                   })()}
 
                   {String(detailData.item?.status || '').toLowerCase() !== 'approved' && (
                     <div className="flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={approveInDetail}
-                        disabled={isSubmitting}
-                        className="px-3 py-2 rounded-md bg-success-500 text-text-inverse text-sm font-medium disabled:opacity-50"
-                      >
-                        Approve
-                      </button>
+                      <button type="button" onClick={approveInDetail} disabled={isSubmitting} className="btn-success px-4 py-2 rounded-xl text-sm font-semibold">Approve</button>
                       <input
                         type="text"
                         value={detailRejectReason}
                         onChange={(e) => setDetailRejectReason(e.target.value)}
-                        placeholder="Reject reason"
-                        className="min-w-[240px] flex-1 px-3 py-2 border border-border-default rounded-md bg-background-surface text-sm"
+                        placeholder="Reject reason (required)"
+                        className="admin-input min-w-[220px] flex-1"
                       />
-                      <button
-                        type="button"
-                        onClick={rejectInDetail}
-                        disabled={isSubmitting || !detailRejectReason.trim()}
-                        className="px-3 py-2 rounded-md bg-error-500 text-text-inverse text-sm font-medium disabled:opacity-50"
-                      >
-                        Reject
-                      </button>
+                      <button type="button" onClick={rejectInDetail} disabled={isSubmitting || !detailRejectReason.trim()} className="btn-danger px-4 py-2 rounded-xl text-sm font-semibold">Reject</button>
                     </div>
                   )}
 
-                  <section className="border border-border-default rounded-lg overflow-hidden">
-                    <div className="px-4 py-3 border-b border-border-default bg-background-subtle">
-                      <h4 className="text-sm font-semibold text-text-primary">Chunk preview</h4>
+                  <section className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                      <h4 className="text-sm font-semibold text-slate-700">Chunk preview</h4>
                     </div>
-                    <div className="max-h-80 overflow-y-auto divide-y divide-border-default">
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
                       {detailChunks.length === 0 ? (
-                        <div className="px-4 py-6 text-sm text-text-muted">No chunks available.</div>
+                        <div className="px-4 py-6 text-sm text-slate-400 text-center">No chunks available.</div>
                       ) : (
                         detailChunks.map((chunk, index) => {
                           const text = chunk?.text || chunk?.content || chunk?.chunk_text || chunk?.value || '';
                           return (
                             <div key={chunk?.id || chunk?.chunk_id || index} className="px-4 py-3">
-                              <p className="text-xs text-text-muted mb-1">Chunk {index + 1}</p>
-                              <p className="text-sm text-text-primary whitespace-pre-wrap break-words">
-                                {text || JSON.stringify(chunk)}
-                              </p>
+                              <p className="text-xs font-semibold text-slate-400 mb-1">Chunk {index + 1}</p>
+                              <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">{text || JSON.stringify(chunk)}</p>
                             </div>
                           );
                         })
@@ -912,33 +811,22 @@ export default function ContextManagement() {
         </div>
       )}
 
-      {/* ── Success toast */}
+      {/* Success toast */}
       {successMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-950/60"
-            onClick={() => setSuccessMessage('')}
-            aria-label="Close notification"
-          />
-          <div className="relative w-full max-w-sm rounded-lg border border-border-default bg-background-surface p-5 shadow-xl space-y-4">
-            <div>
-              <h3 className="text-base font-semibold text-success-500 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Success
-              </h3>
-              <p className="text-sm text-text-primary mt-2">{successMessage}</p>
+          <button type="button" className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setSuccessMessage('')} />
+          <div className="relative w-full max-w-sm bg-white rounded-2xl border border-slate-100 p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Success</h3>
+                <p className="text-sm text-slate-500 mt-1">{successMessage}</p>
+              </div>
             </div>
             <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSuccessMessage('')}
-                className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 transition-colors"
-              >
-                OK
-              </button>
+              <button type="button" onClick={() => setSuccessMessage('')} className="btn-primary-gradient px-5 py-2 rounded-xl text-sm font-semibold text-white">OK</button>
             </div>
           </div>
         </div>

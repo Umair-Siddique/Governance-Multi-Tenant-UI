@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { clearTokens } from '../../api/apiClient';
+import { useBranding, clearBrandingCache } from '../../utils/BrandingContext';
 
 const navItems = [
   { label: 'Dashboard', path: '/dashboard' },
@@ -19,9 +20,11 @@ function isActive(currentPath, itemPath) {
 export default function AdminSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { branding } = useBranding();
 
   function handleLogout() {
     clearTokens();
+    clearBrandingCache();
     navigate('/');
   }
 
@@ -29,8 +32,13 @@ export default function AdminSidebar() {
     <aside className="w-72 flex-shrink-0 bg-background-surface border-r border-border-default hidden md:flex flex-col h-screen sticky top-0 overflow-y-auto">
       <div className="h-16 flex items-center px-6 border-b border-border-default">
         <Link to="/dashboard" className="flex items-center gap-3">
-          <img src="/logo.webp" alt="Governance Logo" className="h-8 max-w-[200px] object-contain" />
-          <span className="text-lg font-semibold text-text-primary">Admin Control</span>
+          <img
+            src={branding.logo_url || '/logo.webp'}
+            alt={`${branding.app_name || 'Governance'} Logo`}
+            className="h-8 max-w-[200px] object-contain"
+            onError={(e) => { e.target.src = '/logo.webp'; }}
+          />
+          <span className="text-lg font-semibold text-text-primary">{branding.app_name || 'Admin Control'}</span>
         </Link>
       </div>
 

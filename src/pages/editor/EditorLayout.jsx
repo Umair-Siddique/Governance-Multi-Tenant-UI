@@ -1,22 +1,25 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import EditorSidebar from '../../components/editor/EditorSidebar';
-import ThemeToggle from '../../components/ui/ThemeToggle';
 
 export default function EditorLayout({ title, headerInfo, children }) {
   return (
-    <div className="min-h-screen bg-background-main flex">
+    <div className="min-h-screen bg-slate-50 flex">
       <EditorSidebar />
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-background-surface shadow border-b border-border-default">
-          <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
-            <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">{title}</h1>
-            <div className="flex items-center gap-2">
-              {headerInfo ? <span className="text-sm font-medium text-text-primary">{headerInfo}</span> : null}
-              <ThemeToggle />
+        <header className="admin-header">
+          <div className="px-6 py-4 flex items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 leading-tight">{title}</h1>
+              <p className="text-xs text-slate-400 mt-0.5">Editor Portal</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {headerInfo && (
+                <span className="text-sm font-medium text-slate-600">{headerInfo}</span>
+              )}
               <Link
                 to="/editor/upload"
-                className="px-3 py-2 rounded-md bg-primary-500 text-text-inverse text-sm font-medium hover:bg-primary-600 transition-colors"
+                className="btn-primary-gradient flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
               >
                 Upload
               </Link>
