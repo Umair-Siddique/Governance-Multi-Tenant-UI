@@ -246,8 +246,14 @@ export async function authFetch(url, options = {}) {
             if (!_sessionExpiredRedirectPending && typeof window !== 'undefined') {
                 _sessionExpiredRedirectPending = true;
                 clearTokens();
+                // Subdomain mode: routes live at root, login is just '/'.
+                // Dev path-based mode: prefix with /t/<slug>/.
+                const hostname = window.location.hostname;
+                const onTenantSubdomain = /^[^.]+\./.test(hostname)
+                    && hostname.endsWith('.elorag.com')
+                    && !hostname.startsWith('www.');
                 const slug = localStorage.getItem('tenant_domain');
-                const loginPath = slug ? `/t/${slug}/` : '/';
+                const loginPath = (!onTenantSubdomain && slug) ? `/t/${slug}/` : '/';
                 const currentPath = window.location.pathname;
                 const alreadyOnAuth = currentPath === loginPath
                     || currentPath === '/'

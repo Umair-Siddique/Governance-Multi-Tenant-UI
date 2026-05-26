@@ -2,15 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getBranding } from '../../api/tenantSettings';
 import { setActiveDomain, clearBrandingCache, useBranding } from '../../utils/BrandingContext';
+import { isSubdomainRoutingUnavailable, ROOT_DOMAIN } from '../../utils/tenantHost';
 
 /**
- * White-label portal entry point — path-based alternative to wildcard subdomain routing.
+ * White-label portal entry point.
  *
- * Admin shares:  <origin>/t/<tenant-slug>
- * Example:       http://localhost:5173/t/umair-org
+ * Production: white-label tenants are served via wildcard subdomain
+ *   https://<tenant-slug>.elorag.com
+ * If someone lands on the apex with /t/<slug> in production, redirect them
+ * to the canonical subdomain URL.
  *
- * The slug is derived from the tenant name in Branding Settings (e.g. "Umair org" → "umair-org").
- * Backend must support:  GET /api/branding?name=<slug>
+ * Dev/preview (localhost, *.vercel.app): subdomain routing is impractical,
+ * so this component keeps the legacy /t/:slug path-based portal working.
  */
 export default function TenantPortal() {
     const { tenantSlug } = useParams();
@@ -20,6 +23,12 @@ export default function TenantPortal() {
 
     useEffect(() => {
         if (!tenantSlug) { navigate('/', { replace: true }); return; }
+
+        // Production: redirect /t/<slug> → <slug>.elorag.com (canonical URL)
+        if (!isSubdomainRoutingUnavailable()) {
+            window.location.replace(`${window.location.protocol}//${tenantSlug}.${ROOT_DOMAIN}/`);
+            return;
+        }
 
         (async () => {
             try {

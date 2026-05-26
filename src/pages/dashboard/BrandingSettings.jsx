@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SettingsLayout from '../../components/dashboard/SettingsLayout';
 import { getTenantProfile, normalizeTenantProfile, saveBrandingProfile } from '../../api/tenantSettings';
 import { useBranding } from '../../utils/BrandingContext';
+import { buildPortalUrl, ROOT_DOMAIN } from '../../utils/tenantHost';
 
 function slugify(str) {
     return (str || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -12,7 +13,7 @@ function PortalLinkPanel({ tenantName, tenantType }) {
     const slug = slugify(tenantName);
     if (tenantType !== 'white_label' || !slug) return null;
 
-    const portalUrl = `${window.location.origin}/t/${slug}`;
+    const portalUrl = buildPortalUrl(slug);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(portalUrl).then(() => {
@@ -26,7 +27,7 @@ function PortalLinkPanel({ tenantName, tenantType }) {
             <div className="px-6 py-4 border-b border-border-default bg-primary-soft">
                 <h2 className="text-lg font-semibold text-primary-500">White-Label Portal Link</h2>
                 <p className="text-sm text-text-muted mt-0.5">
-                    Share this URL with your end users. No DNS or custom domain needed.
+                    Share this URL with your end users. Served via the platform wildcard <span className="font-mono">*.{ROOT_DOMAIN}</span>.
                 </p>
             </div>
             <div className="p-6 space-y-3">
@@ -55,9 +56,9 @@ function PortalLinkPanel({ tenantName, tenantType }) {
                     </a>
                 </div>
                 <div className="flex items-start gap-2 text-xs text-text-muted">
-                    <span>Slug:</span>
-                    <span className="font-mono bg-background-subtle px-1.5 py-0.5 rounded text-text-primary">{slug}</span>
-                    <span className="text-text-muted">— auto-derived from tenant name. Backend resolves via <span className="font-mono">GET /api/branding?name={slug}</span>.</span>
+                    <span>Subdomain:</span>
+                    <span className="font-mono bg-background-subtle px-1.5 py-0.5 rounded text-text-primary">{slug}.{ROOT_DOMAIN}</span>
+                    <span className="text-text-muted">— auto-derived from tenant name. Backend resolves via <span className="font-mono">GET /api/branding?domain={slug}.{ROOT_DOMAIN}</span>.</span>
                 </div>
             </div>
         </div>
@@ -235,7 +236,7 @@ export default function BrandingSettings() {
                                     </select>
                                 </div>
                                 <div className="sm:col-span-2">
-                                    <label className="block text-sm font-medium text-text-primary mb-1" htmlFor="custom_domain">Custom domain</label>
+                                    <label className="block text-sm font-medium text-text-primary mb-1" htmlFor="custom_domain">Custom vanity domain (optional)</label>
                                     <input
                                         id="custom_domain"
                                         name="custom_domain"
@@ -246,7 +247,7 @@ export default function BrandingSettings() {
                                         className="w-full px-3 py-2 border border-border-default rounded-lg shadow-sm text-sm bg-background-surface focus:ring-primary-500 focus:border-primary-500"
                                     />
                                     <p className="mt-1 text-xs text-text-muted">
-                                        When this domain loads the app, your branding is applied automatically via <code className="bg-background-subtle px-1 rounded">GET /api/branding?domain=</code>. Point your DNS CNAME to this platform's frontend URL.
+                                        Optional. White-label tenants are served on <span className="font-mono">{`<slug>.${ROOT_DOMAIN}`}</span> by default — set this only if you want an additional vanity domain (e.g. <span className="font-mono">portal.yourorg.nl</span>). Point your DNS CNAME to the platform frontend, and the backend will resolve it via <code className="bg-background-subtle px-1 rounded">GET /api/branding?domain=</code>.
                                     </p>
                                 </div>
                             </div>

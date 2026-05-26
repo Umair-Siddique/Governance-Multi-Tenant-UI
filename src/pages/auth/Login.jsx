@@ -3,15 +3,25 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { login, initiateGoogleSignIn, initiateAzureSignIn } from '../../api/auth';
 import { getAccessToken, storeTokens } from '../../api/apiClient';
 import { getUserRole, getDashboardRouteForRole } from '../../utils/authUtils';
-import { useBranding, getActiveDomain } from '../../utils/BrandingContext';
+import { useBranding } from '../../utils/BrandingContext';
+import { getTenantSlugFromHost, isSubdomainRoutingUnavailable } from '../../utils/tenantHost';
 
 function redirectAfterAuth(destination) {
-    const slug = getActiveDomain();
-    if (slug && !window.location.pathname.startsWith(`/t/${slug}`)) {
-        window.location.href = `/t/${slug}${destination}`;
-    } else {
+    // On a tenant subdomain (<slug>.elorag.com), routes work at root — no prefix needed.
+    if (getTenantSlugFromHost()) {
         window.location.href = destination;
+        return;
     }
+    // Dev fallback: /t/:slug path-based portal
+    if (isSubdomainRoutingUnavailable()) {
+        let slug = null;
+        try { slug = localStorage.getItem('tenant_domain'); } catch {}
+        if (slug && !window.location.pathname.startsWith(`/t/${slug}`)) {
+            window.location.href = `/t/${slug}${destination}`;
+            return;
+        }
+    }
+    window.location.href = destination;
 }
 
 export default function Login() {

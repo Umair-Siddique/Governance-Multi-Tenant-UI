@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { getBranding, getTenantProfile, normalizeTenantProfile } from '../api/tenantSettings';
 import { getAccessToken } from '../api/apiClient';
+import { getTenantSlugFromHost, isSubdomainRoutingUnavailable } from './tenantHost';
 
 const BrandingContext = createContext(null);
 
 const CACHE_KEY   = 'tenant_branding_v1'; // cached branding object
-const DOMAIN_KEY  = 'tenant_domain';      // active white-label tenant slug (persists across sessions)
+const DOMAIN_KEY  = 'tenant_domain';      // dev-only fallback for white-label slug (when subdomain routing unavailable)
 
 export const DEFAULT_BRANDING = {
     app_name: 'Governance',
@@ -19,10 +20,19 @@ export const DEFAULT_BRANDING = {
     footer_text: null,
 };
 
-// ── Domain storage (white-label portal) ───────────────────────────────
+// ── Active tenant slug (white-label portal) ───────────────────────────
+// Resolution order:
+//   1. Subdomain in hostname (<slug>.elorag.com) — production
+//   2. localStorage 'tenant_domain' — dev-only fallback via /t/:slug path
 export function getActiveDomain() {
+    const fromHost = getTenantSlugFromHost();
+    if (fromHost) return fromHost;
     try { return localStorage.getItem(DOMAIN_KEY) || null; } catch { return null; }
 }
+// Only used by the dev path-based /t/:slug portal. In production the
+// slug is encoded in the hostname so this is a no-op storage write
+// that helps OAuth callbacks (which land back on apex) reattach to
+// the original tenant context.
 export function setActiveDomain(domain) {
     try { localStorage.setItem(DOMAIN_KEY, domain); } catch {}
 }
@@ -236,9 +246,11 @@ export function BrandingProvider({ children }) {
 
     const fetchFromServer = useCallback(async () => {
         try {
-            // Priority 1: stored white-label portal domain (set when user visits /t/:domain)
-            // Priority 2: actual hostname (for real custom domain deployments)
-            const activeDomain = getActiveDomain() || window.location.hostname;
+            // Priority 1: tenant subdomain (<slug>.elorag.com) — production white-label
+            // Priority 2: stored slug from dev /t/:slug portal — localhost fallback
+            // Priority 3: bare hostname — real custom-domain deployments
+            const slugFromHost = getTenantSlugFromHost();
+            const activeDomain = slugFromHost || getActiveDomain() || window.location.hostname;
             const domainData = await getBranding(activeDomain);
 
             if (domainData && Object.keys(domainData).length > 0) {
@@ -246,7 +258,7 @@ export function BrandingProvider({ children }) {
                 return;
             }
 
-            // Priority 3: authenticated tenant profile (localhost / Vercel fallback)
+            // Priority 4: authenticated tenant profile (apex / Vercel preview fallback)
             const token = getAccessToken();
             if (!token) return;
 
@@ -257,7 +269,8 @@ export function BrandingProvider({ children }) {
 
             if (profile?.tenant_type === 'white_label' && profile.tenant_name) {
                 const slug = slugify(profile.tenant_name);
-                if (slug) setActiveDomain(slug);
+                // Persist for dev path-based portal; harmless in production
+                if (slug && isSubdomainRoutingUnavailable()) setActiveDomain(slug);
                 const tenantBranding = extractBrandingFromProfile(profile);
                 if (tenantBranding) applyAndStore(tenantBranding);
             } else if (profile) {

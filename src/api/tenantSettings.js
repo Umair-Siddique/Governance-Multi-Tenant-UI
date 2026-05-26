@@ -87,20 +87,37 @@ export function normalizeTenantProfile(p) {
 }
 
 // Public endpoint — no auth required.
-// Tries ?name=<slug> first (tenant-name-based, no DNS needed),
-// then falls back to ?domain=<value> (for real custom domain deployments).
+//
+// Lookup strategy:
+//   - If identifier looks like a hostname (contains a dot or matches the
+//     browser's current hostname), query ?domain=<hostname>.
+//     This covers <slug>.elorag.com (subdomain mode) and vanity domains.
+//   - Otherwise treat it as a bare slug and query ?name=<slug>.
+//     This is used by the dev /t/:slug path-based portal.
+//
+// Backend MUST resolve both forms to the same tenant when:
+//   - tenant_type = 'white_label'
+//   - slug derived from tenant_name matches the subdomain label, OR
+//     custom_domain matches the full hostname.
 export async function getBranding(identifier) {
+    if (!identifier) return {};
     try {
-        // Primary: lookup by tenant name slug
-        const nameRes = await fetch(`${API_BASE}/api/branding?name=${encodeURIComponent(identifier)}`);
-        if (nameRes.ok) {
-            const data = await nameRes.json().catch(() => ({}));
+        const looksLikeHost = identifier.includes('.');
+        const primaryQuery = looksLikeHost
+            ? `domain=${encodeURIComponent(identifier)}`
+            : `name=${encodeURIComponent(identifier)}`;
+        const fallbackQuery = looksLikeHost
+            ? `name=${encodeURIComponent(identifier.split('.')[0])}`
+            : `domain=${encodeURIComponent(identifier)}`;
+
+        const primaryRes = await fetch(`${API_BASE}/api/branding?${primaryQuery}`);
+        if (primaryRes.ok) {
+            const data = await primaryRes.json().catch(() => ({}));
             if (data && Object.keys(data).length > 0) return data;
         }
-        // Fallback: lookup by custom domain (real DNS deployment)
-        const domainRes = await fetch(`${API_BASE}/api/branding?domain=${encodeURIComponent(identifier)}`);
-        if (!domainRes.ok) return {};
-        return await domainRes.json().catch(() => ({}));
+        const fallbackRes = await fetch(`${API_BASE}/api/branding?${fallbackQuery}`);
+        if (!fallbackRes.ok) return {};
+        return await fallbackRes.json().catch(() => ({}));
     } catch {
         return {};
     }

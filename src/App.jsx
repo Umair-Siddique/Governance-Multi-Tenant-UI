@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { BrandingProvider, getActiveDomain, setActiveDomain } from './utils/BrandingContext';
+import { BrandingProvider, setActiveDomain } from './utils/BrandingContext';
+import { getTenantSlugFromHost, isSubdomainRoutingUnavailable } from './utils/tenantHost';
 import DesignSystemExample from './components/DesignSystemExample';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
@@ -38,16 +39,28 @@ import TenantPortal from './pages/auth/TenantPortal';
 import AuditLogs from './pages/admin/AuditLogs';
 
 function App() {
-  // Synchronously detect /t/:slug from URL or localStorage.
-  // White-label tenants get a Router basename so the slug persists on every screen.
+  // Routing strategy:
+  //   Production:  <slug>.elorag.com — slug comes from hostname, no Router basename needed
+  //   Dev/preview: /t/:slug path-based portal — basename keeps slug pinned across navigations
   const basename = useMemo(() => {
-    const urlMatch = window.location.pathname.match(/^\/t\/([^/]+)/);
-    if (urlMatch) {
-      setActiveDomain(urlMatch[1]);
-      return `/t/${urlMatch[1]}`;
+    // Production subdomain — routes work at the root
+    if (getTenantSlugFromHost()) return undefined;
+
+    // Dev fallback: /t/:slug path-based portal
+    if (isSubdomainRoutingUnavailable()) {
+      const urlMatch = window.location.pathname.match(/^\/t\/([^/]+)/);
+      if (urlMatch) {
+        setActiveDomain(urlMatch[1]);
+        return `/t/${urlMatch[1]}`;
+      }
+      try {
+        const stored = localStorage.getItem('tenant_domain');
+        return stored ? `/t/${stored}` : undefined;
+      } catch {
+        return undefined;
+      }
     }
-    const stored = getActiveDomain();
-    return stored ? `/t/${stored}` : undefined;
+    return undefined;
   }, []);
 
   return (

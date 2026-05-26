@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getTenantProfile } from '../../api/tenantSettings';
 import { storeTokens } from '../../api/apiClient';
 import { handleGoogleCallback, handleAzureCallback } from '../../api/auth';
-import { useBranding, getActiveDomain } from '../../utils/BrandingContext';
+import { useBranding } from '../../utils/BrandingContext';
+import { getTenantSlugFromHost, isSubdomainRoutingUnavailable, ROOT_DOMAIN } from '../../utils/tenantHost';
 
 // Guards duplicate callback processing (e.g. StrictMode double invoke in dev).
 let lastProcessedCallbackKey = null;
@@ -71,12 +72,26 @@ export default function Callback() {
                 const { getUserRole, getDashboardRouteForRole } = await import('../../utils/authUtils');
                 const destination = getDashboardRouteForRole(getUserRole());
 
-                const slug = getActiveDomain();
-                if (slug && !window.location.pathname.startsWith(`/t/${slug}`)) {
-                    window.location.href = `/t/${slug}${destination}`;
-                } else {
+                // OAuth/SSO callback URLs are usually registered on the apex domain
+                // (one allowlist entry). If the user started on a tenant subdomain
+                // we capture their slug in localStorage before redirecting, then
+                // bounce them back to <slug>.elorag.com here.
+                if (getTenantSlugFromHost()) {
                     navigate(destination);
+                    return;
                 }
+                let storedSlug = null;
+                try { storedSlug = localStorage.getItem('tenant_domain'); } catch {}
+                if (storedSlug && !isSubdomainRoutingUnavailable()) {
+                    window.location.href = `${window.location.protocol}//${storedSlug}.${ROOT_DOMAIN}${destination}`;
+                    return;
+                }
+                if (storedSlug && isSubdomainRoutingUnavailable()
+                    && !window.location.pathname.startsWith(`/t/${storedSlug}`)) {
+                    window.location.href = `/t/${storedSlug}${destination}`;
+                    return;
+                }
+                navigate(destination);
             } catch (err) {
                 setError(err.message || 'Failed to sign in. Please try again.');
                 setRetrying(false);
