@@ -93,6 +93,7 @@ function normalizeRow(item, source) {
       item.pinecone_status || item.pineconeStatus || 'idle'
     ),
     pineconeId: item.pinecone_id || item.pineconeId || '',
+    publishedToPinecone: Boolean(item.published_to_pinecone ?? item.publishedToPinecone),
     raw: item,
   };
 }
@@ -323,10 +324,16 @@ export default function ContextManagement() {
 
   async function handlePublishToPineconeSelected() {
     const documentRows = selectedRows.filter((r) => r.source === 'document');
-    const documentIds = documentRows.map((r) => r.id);
+    const publishableRows = documentRows.filter((r) => !r.publishedToPinecone);
+    const skippedCount = documentRows.length - publishableRows.length;
+    const documentIds = publishableRows.map((r) => r.id);
 
     if (documentIds.length === 0) {
-      alert('Please select at least one document (not CSV) to publish.');
+      alert(
+        skippedCount > 0
+          ? 'All selected documents are already published to Pinecone.'
+          : 'Please select at least one document (not CSV) to publish.',
+      );
       return;
     }
 
@@ -360,7 +367,9 @@ export default function ContextManagement() {
       });
 
       setSuccessMessage(
-        `Pinecone publish triggered for ${documentIds.length} document(s). Status will update automatically.`
+        skippedCount > 0
+          ? `Pinecone publish triggered for ${documentIds.length} document(s). ${skippedCount} already published document(s) were skipped.`
+          : `Pinecone publish triggered for ${documentIds.length} document(s). Status will update automatically.`
       );
       setSelectedKeys([]);
       await loadByStatus(activeTab);
@@ -555,7 +564,10 @@ export default function ContextManagement() {
               <button
                 type="button"
                 onClick={handlePublishToPineconeSelected}
-                disabled={isSubmitting || selectedRows.filter((r) => r.source === 'document').length === 0}
+                disabled={
+                  isSubmitting ||
+                  selectedRows.filter((r) => r.source === 'document' && !r.publishedToPinecone).length === 0
+                }
                 className="btn-primary-gradient px-4 py-2 rounded-xl text-sm font-semibold text-white"
               >
                 Publish to Pinecone

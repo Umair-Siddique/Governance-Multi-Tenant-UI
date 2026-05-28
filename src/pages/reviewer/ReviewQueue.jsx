@@ -20,6 +20,10 @@ function itemKey(item) {
   return `${item.source}:${item.id}`;
 }
 
+function isPublishedToPinecone(item) {
+  return Boolean(item?.raw?.published_to_pinecone ?? item?.raw?.publishedToPinecone);
+}
+
 export default function ReviewQueue() {
   const [documents, setDocuments] = useState([]);
   const [csvItems, setCsvItems] = useState([]);
@@ -154,6 +158,7 @@ export default function ReviewQueue() {
       title: doc.title || doc.filename || doc.fileName || 'Untitled',
       status: String(doc.status || '').toLowerCase(),
       createdAt: doc.created_at || doc.uploadedAt,
+      publishedToPinecone: Boolean(doc.published_to_pinecone ?? doc.publishedToPinecone),
       raw: doc,
     }));
 
@@ -229,11 +234,19 @@ export default function ReviewQueue() {
         const canPublishToPinecone = role === 'admin' || role === 'editor';
 
         if (canPublishToPinecone && documentIds.length > 0) {
-          const publishResult = await publishToPinecone(documentIds);
-          const taskPairs = extractTaskPairsFromPublishResponse(publishResult, documentIds);
+          const publishableDocumentIds = items
+            .filter((item) => item.source === 'document' && item.id && !isPublishedToPinecone(item))
+            .map((item) => item.id);
+          if (publishableDocumentIds.length === 0) {
+            setSelectedKeys([]);
+            await fetchDocs();
+            return true;
+          }
+          const publishResult = await publishToPinecone(publishableDocumentIds);
+          const taskPairs = extractTaskPairsFromPublishResponse(publishResult, publishableDocumentIds);
 
           taskPairs.forEach(({ documentId, taskId }) => {
-            const docId = documentId || documentIds[0];
+            const docId = documentId || publishableDocumentIds[0];
             if (!docId || !taskId) return;
 
             updatePineconeState(docId, {
@@ -310,11 +323,19 @@ export default function ReviewQueue() {
         const canPublishToPinecone = role === 'admin' || role === 'editor';
 
         if (canPublishToPinecone) {
-          const publishResult = await publishToPinecone(documentIds);
-          const taskPairs = extractTaskPairsFromPublishResponse(publishResult, documentIds);
+          const publishableDocumentIds = selectedDocuments
+            .filter((item) => !isPublishedToPinecone(item))
+            .map((item) => item.id);
+          if (publishableDocumentIds.length === 0) {
+            setSelectedKeys([]);
+            await fetchDocs();
+            return;
+          }
+          const publishResult = await publishToPinecone(publishableDocumentIds);
+          const taskPairs = extractTaskPairsFromPublishResponse(publishResult, publishableDocumentIds);
 
           taskPairs.forEach(({ documentId, taskId }) => {
-            const docId = documentId || documentIds[0];
+            const docId = documentId || publishableDocumentIds[0];
             if (!docId || !taskId) return;
 
             updatePineconeState(docId, {

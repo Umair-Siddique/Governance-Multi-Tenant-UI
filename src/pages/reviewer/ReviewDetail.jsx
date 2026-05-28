@@ -208,7 +208,8 @@ export default function ReviewDetail() {
       const canPublishToPinecone = role === 'admin' || role === 'editor';
       let taskId = '';
 
-      if (canPublishToPinecone) {
+      const alreadyPublished = Boolean(doc?.published_to_pinecone ?? doc?.publishedToPinecone);
+      if (canPublishToPinecone && !alreadyPublished) {
         const publishResult = await publishToPinecone([documentId]);
         const taskPairs = extractTaskPairsFromPublishResponse(publishResult, [documentId]);
         taskId = taskPairs[0]?.taskId || '';

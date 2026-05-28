@@ -40,6 +40,10 @@ function getApprovedAt(doc) {
   );
 }
 
+function isPublishedToPinecone(doc) {
+  return Boolean(doc?.published_to_pinecone ?? doc?.publishedToPinecone);
+}
+
 export default function ApprovedDocuments() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -189,13 +193,22 @@ export default function ApprovedDocuments() {
   // ── Publish selected documents to Pinecone
   async function handlePublishSelected() {
     if (selectedKeys.length === 0) return;
+    const publishableIds = selectedKeys.filter((id) => {
+      const doc = approvedDocuments.find((d) => (d.id || d._id) === id);
+      return doc && !isPublishedToPinecone(doc);
+    });
+    const skippedCount = selectedKeys.length - publishableIds.length;
+    if (publishableIds.length === 0) {
+      alert('All selected documents are already published to Pinecone.');
+      return;
+    }
     try {
       setPublishing(true);
-      const publishResult = await publishToPinecone(selectedKeys);
+      const publishResult = await publishToPinecone(publishableIds);
 
       console.log('[Pinecone] Publish response:', publishResult);
 
-      const taskPairs = extractTaskPairsFromPublishResponse(publishResult, selectedKeys);
+      const taskPairs = extractTaskPairsFromPublishResponse(publishResult, publishableIds);
 
       console.log('[Pinecone] Extracted task pairs:', taskPairs);
 
@@ -217,7 +230,7 @@ export default function ApprovedDocuments() {
       // task_id for the entire batch instead of one per document.
       const batchTaskId = taskPairs[0]?.taskId;
 
-      selectedKeys.forEach((docId) => {
+      publishableIds.forEach((docId) => {
         const taskId = docToTask.get(docId) || batchTaskId;
         if (!taskId) {
           console.warn('[Pinecone] No taskId found for doc:', docId);
@@ -234,6 +247,9 @@ export default function ApprovedDocuments() {
       });
 
       setSelectedKeys([]);
+      if (skippedCount > 0) {
+        alert(`${skippedCount} already published document(s) were skipped.`);
+      }
     } catch (err) {
       console.error('[Pinecone] Publish failed:', err);
       alert('Publish failed: ' + err.message);
@@ -334,7 +350,13 @@ export default function ApprovedDocuments() {
                 <button
                   type="button"
                   onClick={handlePublishSelected}
-                  disabled={selectedKeys.length === 0 || publishing}
+                  disabled={
+                    publishing ||
+                    selectedKeys.filter((id) => {
+                      const doc = approvedDocuments.find((d) => (d.id || d._id) === id);
+                      return doc && !isPublishedToPinecone(doc);
+                    }).length === 0
+                  }
                   className="px-4 py-2 rounded-md bg-primary-500 text-text-inverse text-sm font-medium disabled:opacity-50 transition-colors hover:bg-primary-600"
                 >
                   {publishing ? 'Publishing...' : 'Publish to Pinecone'}
