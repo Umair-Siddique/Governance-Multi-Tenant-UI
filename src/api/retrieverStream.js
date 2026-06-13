@@ -8,9 +8,10 @@ import { API_BASE, authFetch } from './apiClient';
 /**
  * @typedef {object} RetrieverStreamHandlers
  * @property {(data: object) => void} [onStatus] — stage / heartbeat updates
- * @property {(data: object) => void} [onPlan] — planner output
+ * @property {(data: object) => void} [onPlan] — planner output (includes answer_provider / answer_model)
  * @property {(chunk: string, raw: object) => void} [onContent] — streamed answer tokens
  * @property {(data: object) => void} [onDone] — stream finished
+ * @property {(data: object) => void} [onError] — stream-ending error (e.g. invalid llm_provider_id)
  */
 
 /**
@@ -18,10 +19,11 @@ import { API_BASE, authFetch } from './apiClient';
  * @param {string} opts.query
  * @param {number} [opts.top_k]
  * @param {File[]} [opts.files] — each sent as form field `file` (same as curl -F "file=@...")
+ * @param {string} [opts.llm_provider_id] — explicit LLM provider to answer with; omit to use the tenant's default
  * @param {AbortSignal} [opts.signal]
  * @param {RetrieverStreamHandlers} opts.handlers
  */
-export async function streamRetriever({ query, top_k = 8, files = [], signal, handlers = {} }) {
+export async function streamRetriever({ query, top_k = 8, files = [], llm_provider_id, signal, handlers = {} }) {
   const url = `${API_BASE}/api/retriever/stream`;
   const list = Array.isArray(files) ? files : [];
   const hasFiles = list.length > 0;
@@ -41,11 +43,12 @@ export async function streamRetriever({ query, top_k = 8, files = [], signal, ha
     const fd = new FormData();
     fd.append('query', query);
     fd.append('top_k', String(top_k));
+    if (llm_provider_id) fd.append('llm_provider_id', llm_provider_id);
     list.forEach((f) => fd.append('file', f));
     init.body = fd;
   } else {
     headers['Content-Type'] = 'application/json';
-    init.body = JSON.stringify({ query, top_k });
+    init.body = JSON.stringify({ query, top_k, llm_provider_id });
   }
 
   const res = await authFetch(url, init);
@@ -149,6 +152,11 @@ function dispatchEvent(eventName, data, handlers = {}) {
 
   if (eventName === 'plan' || (data.search_query !== undefined && data.retrieval_mode !== undefined)) {
     handlers.onPlan?.(data);
+    return;
+  }
+
+  if (eventName === 'error') {
+    handlers.onError?.(data);
     return;
   }
 

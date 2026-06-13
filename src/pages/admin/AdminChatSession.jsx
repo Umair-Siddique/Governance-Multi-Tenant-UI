@@ -5,11 +5,18 @@ import remarkGfm from 'remark-gfm';
 import AdminChatLayout from './AdminChatLayout';
 import { appendMessage, listMessages } from '../../api/chats';
 import { streamRetriever } from '../../api/retrieverStream';
+import { getLLMProviders } from '../../api/llmProviders';
 
 const MAX_ATTACHMENTS = 12;
 
 const FILE_INPUT_ACCEPT =
   '.pdf,.docx,.txt,.md,.csv,.json,.log,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+const PROVIDER_LABELS = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  mistral: 'Mistral',
+};
 
 export default function AdminChatSession() {
   const { sessionId } = useParams();
@@ -20,6 +27,9 @@ export default function AdminChatSession() {
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [question, setQuestion] = useState('');
   const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const [providers, setProviders] = useState([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [selectedProviderId, setSelectedProviderId] = useState('');
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const streamAbortRef = useRef(null);
@@ -95,11 +105,13 @@ export default function AdminChatSession() {
     ]);
 
     let fullText = '';
+    let streamError = null;
     try {
       await streamRetriever({
         query: text,
         top_k: 8,
         files: filesToSend,
+        llm_provider_id: selectedProviderId || undefined,
         signal: ac.signal,
         handlers: {
           onStatus: (data) => {
@@ -107,6 +119,16 @@ export default function AdminChatSession() {
             if (!line) return;
             setMessages((prev) =>
               prev.map((m) => (m.id === assistantId ? { ...m, statusText: line } : m))
+            );
+          },
+          onPlan: (data) => {
+            const answerProvider = data?.answer_provider;
+            const answerModel = data?.answer_model;
+            if (!answerProvider && !answerModel) return;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, answerProvider, answerModel } : m
+              )
             );
           },
           onContent: (chunk) => {
@@ -119,9 +141,23 @@ export default function AdminChatSession() {
               )
             );
           },
+          onError: (data) => {
+            streamError = typeof data?.message === 'string' ? data.message : 'Something went wrong.';
+          },
           onDone: () => {},
         },
       });
+
+      if (streamError) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, text: `*Error:* ${streamError}`, streaming: false, statusText: '' }
+              : m
+          )
+        );
+        return;
+      }
 
       const savedAssistant = await appendMessage(conversationId, {
         role: 'assistant',
@@ -203,6 +239,24 @@ export default function AdminChatSession() {
 
   useEffect(() => {
     return () => streamAbortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getLLMProviders();
+        const list = Array.isArray(data) ? data : (data?.providers ?? []);
+        const active = list.filter((p) => p?.is_active);
+        setProviders(active);
+        if (active.length > 0) {
+          setSelectedProviderId(active[0].id);
+        }
+      } catch {
+        setProviders([]);
+      } finally {
+        setProvidersLoading(false);
+      }
+    })();
   }, []);
 
   async function loadOlderMessages() {
@@ -337,6 +391,11 @@ export default function AdminChatSession() {
                 <div key={msg.id} className={`rounded-lg p-3 ${bubbleClass(msg)}`}>
                   <p className="text-xs text-text-secondary mb-1">{msg.role === 'user' ? 'You' : 'Assistant'}</p>
                   <MessageBody msg={msg} />
+                  {msg.role === 'assistant' && !msg.streaming && msg.answerModel && (
+                    <p className="mt-2 text-[11px] text-text-muted">
+                      Answered by {PROVIDER_LABELS[msg.answerProvider] || msg.answerProvider || 'AI'} · {msg.answerModel}
+                    </p>
+                  )}
                   {msg.role === 'user' && msg.attachmentNames?.length > 0 && (
                     <ul className="mt-2 text-xs text-text-muted list-disc list-inside">
                       {msg.attachmentNames.map((name) => (
@@ -372,6 +431,27 @@ export default function AdminChatSession() {
               <span className="text-xs text-text-muted">
                 {attachmentFiles.length}/{MAX_ATTACHMENTS}
               </span>
+            </div>
+          )}
+
+          {providers.length > 0 && (
+            <div className="px-4 py-2 border-t border-border-default flex items-center gap-2 bg-background-main">
+              <label htmlFor="llm-provider-select" className="text-xs text-text-secondary shrink-0">
+                Model
+              </label>
+              <select
+                id="llm-provider-select"
+                value={selectedProviderId}
+                onChange={(e) => setSelectedProviderId(e.target.value)}
+                disabled={replying || providersLoading}
+                className="h-8 px-2 rounded-md border border-border-default bg-background-surface text-text-primary text-xs disabled:opacity-60 max-w-[260px]"
+              >
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {PROVIDER_LABELS[p.provider_type] || p.provider_type} ({p.default_model})
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 
