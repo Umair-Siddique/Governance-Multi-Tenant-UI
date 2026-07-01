@@ -123,6 +123,16 @@ export async function resetPassword({ password, token }) {
     return handleJsonResponse(res, 'Failed to reset password');
 }
 
+// Validate an invite token and fetch invitation + inviting-tenant branding details.
+// Public/unauthenticated — called before the invited user has any session.
+export async function getInviteDetails(token) {
+    const res = await fetch(`${API_BASE}/auth/accept-invite/${token}`, {
+        method: 'GET',
+        credentials: 'include',
+    });
+    return handleJsonResponse(res, 'Failed to load invitation details');
+}
+
 // Accept Invite API
 export async function acceptInvite({ password, fullName, token }) {
     const res = await fetch(`${API_BASE}/auth/accept-invite/${token}`, {

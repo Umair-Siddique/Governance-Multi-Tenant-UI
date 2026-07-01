@@ -1,16 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { acceptInvite } from '../../api/auth';
+import { acceptInvite, getInviteDetails } from '../../api/auth';
+import { useBranding, DEFAULT_BRANDING } from '../../utils/BrandingContext';
 
 export default function AcceptInvite() {
     const { token } = useParams();
     const navigate = useNavigate();
+    const { branding, setBranding } = useBranding();
 
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
+    const [tenantName, setTenantName] = useState(null);
+
+    // Invite links always land on the platform's root domain (not the tenant's
+    // white-label subdomain), so branding can't be resolved from the hostname
+    // here the way Login.jsx does. Instead, fetch it from the invite token itself.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await getInviteDetails(token);
+                if (cancelled) return;
+                setTenantName(data?.invitation?.tenant_name || null);
+                if (data?.branding && Object.keys(data.branding).length > 0) {
+                    setBranding(data.branding);
+                }
+            } catch {
+                // Invalid/expired token surfaces on submit instead; keep default branding.
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [token, setBranding]);
 
     const handleAccept = async (e) => {
         e.preventDefault();
@@ -76,12 +99,17 @@ export default function AcceptInvite() {
         <div className="min-h-screen flex items-center justify-center bg-background-main p-4">
             <div className="w-full max-w-md bg-background-surface rounded-xl shadow-lg border border-border-default p-6 text-center">
                 <div className="flex justify-center mb-6">
-                    <img src="/logo.webp" alt="Governance Logo" className="h-14 max-w-[200px] object-contain" />
+                    <img
+                        src={branding.logo_url || '/logo.webp'}
+                        alt={`${branding.app_name || DEFAULT_BRANDING.app_name} Logo`}
+                        className="h-14 max-w-[200px] object-contain"
+                        onError={(e) => { e.target.src = '/logo.webp'; }}
+                    />
                 </div>
 
                 <h2 className="text-2xl font-bold text-text-primary mb-2">You've Been Invited!</h2>
                 <p className="text-sm text-text-secondary mb-8">
-                    Set a password to accept your invitation and join the workspace.
+                    Set a password to accept your invitation and join {tenantName ? <strong>{tenantName}</strong> : 'the workspace'}.
                 </p>
 
                 {error && (

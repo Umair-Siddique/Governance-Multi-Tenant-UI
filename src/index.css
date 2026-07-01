@@ -176,23 +176,23 @@
 /* Gradient top accent bar inside auth cards */
 .auth-card-accent {
     height: 4px;
-    background: linear-gradient(90deg, #1D4ED8 0%, #4338CA 50%, #7C3AED 100%);
+    background: linear-gradient(90deg, var(--tenant-primary-500, #1D4ED8) 0%, var(--tenant-secondary-500, #4338CA) 50%, #7C3AED 100%);
 }
 
 /* Sidebar gradient brand header */
 .sidebar-brand-bg {
-    background: linear-gradient(135deg, #1E40AF 0%, #4338CA 100%);
+    background: linear-gradient(135deg, var(--tenant-primary-500, #1E40AF) 0%, var(--tenant-secondary-500, #4338CA) 100%);
 }
 
 /* Gradient primary button */
 .btn-primary-gradient {
-    background: linear-gradient(135deg, #1D4ED8 0%, #4338CA 100%);
+    background: linear-gradient(135deg, var(--tenant-primary-500, #1D4ED8) 0%, var(--tenant-secondary-500, #4338CA) 100%);
     box-shadow: 0 4px 14px rgba(29, 78, 216, 0.35);
     transition: all 0.2s ease;
 }
 
 .btn-primary-gradient:hover:not(:disabled) {
-    background: linear-gradient(135deg, #1E40AF 0%, #3730A3 100%);
+    background: linear-gradient(135deg, var(--color-primary-600, #1E40AF) 0%, var(--tenant-secondary-600, #3730A3) 100%);
     box-shadow: 0 6px 20px rgba(29, 78, 216, 0.4);
     transform: translateY(-1px);
 }
@@ -212,8 +212,8 @@
 
 /* Nav active item */
 .nav-active {
-    background: linear-gradient(90deg, rgba(29, 78, 216, 0.09) 0%, rgba(67, 56, 202, 0.04) 100%);
-    border-left: 3px solid #1D4ED8;
+    background: var(--color-primary-soft, rgba(29, 78, 216, 0.09));
+    border-left: 3px solid var(--tenant-primary-500, #1D4ED8);
 }
 
 .nav-inactive:hover {
@@ -324,7 +324,7 @@ input[type="radio"] {
 
 /* Tab button variants */
 .tab-active {
-    background: linear-gradient(135deg, #1D4ED8 0%, #4338CA 100%);
+    background: linear-gradient(135deg, var(--tenant-primary-500, #1D4ED8) 0%, var(--tenant-secondary-500, #4338CA) 100%);
     color: #ffffff;
     box-shadow: 0 2px 8px rgba(29, 78, 216, 0.3);
 }

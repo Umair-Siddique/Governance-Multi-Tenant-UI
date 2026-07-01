@@ -8,6 +8,8 @@ const BrandingContext = createContext(null);
 const CACHE_KEY   = 'tenant_branding_v1'; // cached branding object
 const DOMAIN_KEY  = 'tenant_domain';      // dev-only fallback for white-label slug (when subdomain routing unavailable)
 
+const DEFAULT_FAVICON = '/Favicon.svg';
+
 export const DEFAULT_BRANDING = {
     app_name: 'Governance',
     logo_url: '/logo.webp',
@@ -51,7 +53,13 @@ function resetInlineVars() {
     ['--color-primary-500','--color-primary-600','--color-primary-700',
      '--color-primary-soft','--tenant-primary-500','--color-text-inverse',
      '--color-primary-50','--color-primary-100','--color-primary-200',
-     '--color-primary-300','--color-primary-400'].forEach(v => root.style.removeProperty(v));
+     '--color-primary-300','--color-primary-400',
+     '--tenant-secondary-500','--tenant-secondary-600'].forEach(v => root.style.removeProperty(v));
+}
+
+function resetFavicon() {
+    const link = document.querySelector("link[rel~='icon']");
+    if (link) link.href = DEFAULT_FAVICON;
 }
 
 // ── Branding cache ─────────────────────────────────────────────────────
@@ -118,6 +126,11 @@ function injectTenantStyleTag(branding) {
     const soft = lighten(p, 0.92);
     const accent = branding.accent_color && /^#[0-9A-Fa-f]{6}$/i.test(branding.accent_color.trim())
         ? branding.accent_color.trim() : null;
+    // Secondary defaults to a darker shade of primary when the tenant hasn't
+    // set one explicitly, so gradients still look coherent with a single color.
+    const s    = branding.secondary_color && /^#[0-9A-Fa-f]{6}$/i.test(branding.secondary_color.trim())
+        ? branding.secondary_color.trim() : p700;
+    const s600 = darken(s, 0.12);
 
     // CSS custom-property overrides (used by any var() references in CSS)
     const vars = `
@@ -132,6 +145,8 @@ function injectTenantStyleTag(branding) {
             --color-primary-700:  ${p700};
             --color-primary-soft: ${soft};
             --tenant-primary-500: ${p};
+            --tenant-secondary-500: ${s};
+            --tenant-secondary-600: ${s600};
             ${accent ? `--color-text-inverse: ${accent};` : ''}
         }
     `;
@@ -169,11 +184,16 @@ function applyBrandingCssVars(branding) {
     const root = document.documentElement;
     if (branding.primary_color && /^#[0-9A-Fa-f]{6}$/i.test(branding.primary_color.trim())) {
         const p = branding.primary_color.trim();
+        const p700 = darken(p, 0.25);
         root.style.setProperty('--color-primary-500',  p);
         root.style.setProperty('--color-primary-600',  darken(p, 0.12));
-        root.style.setProperty('--color-primary-700',  darken(p, 0.25));
+        root.style.setProperty('--color-primary-700',  p700);
         root.style.setProperty('--color-primary-soft', lighten(p, 0.92));
         root.style.setProperty('--tenant-primary-500', p);
+        const s = branding.secondary_color && /^#[0-9A-Fa-f]{6}$/i.test(branding.secondary_color.trim())
+            ? branding.secondary_color.trim() : p700;
+        root.style.setProperty('--tenant-secondary-500', s);
+        root.style.setProperty('--tenant-secondary-600', darken(s, 0.12));
     }
     if (branding.accent_color) root.style.setProperty('--color-text-inverse', branding.accent_color);
     // The style tag is the real override — inject it last
@@ -240,6 +260,7 @@ export function BrandingProvider({ children }) {
         clearBrandingCache();
         clearActiveDomain();
         resetInlineVars();
+        resetFavicon();
         document.title = DEFAULT_BRANDING.app_name;
         setBrandingState(DEFAULT_BRANDING);
     }, []);
@@ -278,6 +299,7 @@ export function BrandingProvider({ children }) {
                 clearActiveDomain();
                 clearBrandingCache();
                 resetInlineVars();
+                resetFavicon();
                 document.title = DEFAULT_BRANDING.app_name;
                 setBrandingState(DEFAULT_BRANDING);
             }
